@@ -1,0 +1,13 @@
+[package]
+name = "service-quotas"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1.57"
+aws-config = "0.47.0"
+aws-sdk-servicequotas = "0.17.0"
+aws-sdk-cloudwatch = "0.17.0"
+clap = { version = "3.2.17", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1.9"
