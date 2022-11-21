@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::util;
+use aws_sdk_cloudwatch::model::MetricDataResult;
 use aws_sdk_cloudwatch::{
     self,
     model::{Dimension, Metric, MetricDataQuery, MetricStat},
@@ -14,6 +15,7 @@ pub struct Client {
     client: aws_sdk_cloudwatch::Client,
 }
 
+#[derive(Debug, Clone)]
 pub struct ServiceQuotaUtilizationQueryInput {
     pub namespace: String,
     pub metric_name: String,
@@ -54,7 +56,7 @@ impl Client {
 
         let metric_stat = MetricStat::builder()
             .metric(metric)
-            .period(300)
+            .period(1800)
             .stat(&query_input.statistic)
             .build();
 
@@ -85,11 +87,32 @@ impl Client {
 
         for result in results {
             let r = result.metric_data_results().unwrap();
-            return Ok(*r.last().unwrap().values().unwrap().first().unwrap() as u8);
+
+            return match get_max_value(r) {
+                Some(v) => Ok(v),
+                None => Err("failed to find any metric values")?,
+            };
         }
 
         return Err("failed to find metrics")?;
     }
+}
+
+fn get_max_value(metric_data_results: &[MetricDataResult]) -> Option<u8> {
+    // TODO: max datapoints is 1
+    let mut max: Option<u8> = None;
+
+    for metric_data_result in metric_data_results {
+        if let Some(values) = metric_data_result.values() {
+            for value in values {
+                if Some(*value as u8) > max {
+                    max = Some(*value as u8)
+                }
+            }
+        }
+    }
+
+    max
 }
 
 fn hashmap_to_dimensions(hashmap: &HashMap<String, String>) -> Vec<Dimension> {

@@ -13,4 +13,8 @@ impl ServiceQuota {
             utilization: utilization,
         }
     }
+
+    pub fn utilization(self) -> Option<u8> {
+        self.utilization
+    }
 }
