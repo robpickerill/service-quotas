@@ -39,9 +39,10 @@ impl Client {
         let end_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_secs();
+            .as_secs()
+            - 600;
 
-        let start_time = end_time - 600;
+        let start_time = end_time - 900;
 
         let dimensions = hashmap_to_dimensions(&query_input.dimensions);
 
@@ -53,7 +54,7 @@ impl Client {
 
         let metric_stat = MetricStat::builder()
             .metric(metric)
-            .period(60)
+            .period(300)
             .stat(&query_input.statistic)
             .build();
 
@@ -74,7 +75,7 @@ impl Client {
             .get_metric_data()
             .metric_data_queries(usage_data)
             .metric_data_queries(percentage_usage_data)
-            .max_datapoints(10)
+            .max_datapoints(1)
             .start_time(DateTime::from_secs(start_time as i64))
             .end_time(DateTime::from_secs(end_time as i64))
             .into_paginator()
@@ -83,9 +84,11 @@ impl Client {
             .await?;
 
         for result in results {
-            println!("{:?}", result.metric_data_results());
+            let r = result.metric_data_results().unwrap();
+            return Ok(*r.last().unwrap().values().unwrap().first().unwrap() as u8);
         }
-        Ok(0)
+
+        return Err("failed to find metrics")?;
     }
 }
 
