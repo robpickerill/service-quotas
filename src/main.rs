@@ -55,9 +55,9 @@ async fn run(args: Args) {
 
     for handler in handlers {
         let result = handler.await;
-        match result {
-            Err(err) => println!("{}", err),
-            _ => (),
+
+        if let Err(err) = result {
+            println!("error: {}", err)
         }
     }
 

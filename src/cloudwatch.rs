@@ -117,7 +117,7 @@ fn get_max_value(metric_data_results: &[MetricDataResult]) -> Option<u8> {
 
 fn hashmap_to_dimensions(hashmap: &HashMap<String, String>) -> Vec<Dimension> {
     hashmap
-        .into_iter()
+        .iter()
         .map(|(k, v)| Dimension::builder().name(k).value(v).build())
         .collect::<Vec<_>>()
 }
