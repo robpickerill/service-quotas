@@ -13,10 +13,7 @@ The CLI will discover all service quotas via the [list-services](https://docs.aw
 ```
 docker run robpickerill/service-quotas -h
 
-# mount AWS credentials
-docker run -e AWS_REGION=us-east-1 -v ${HOME}/.aws/:${HOME}/.aws/:ro robpickerill/service-quotas
-
-
-# with AWS profiles
-docker run -e AWS_REGION=us-east-1 AWS_PROFILE=profile_name -v ${HOME}/.aws/:${HOME}/.aws/:ro robpickerill/service-quotas
+docker run -e AWS_REGION=us-east-1 -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN robpickerill/service-quotas
 ```
+
+Note: AWS credentials are lifted from the environment variables.
