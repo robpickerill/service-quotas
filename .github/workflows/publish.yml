@@ -28,5 +28,9 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v3
         with:
+          context: .
+          platform: linux/amd64,linux/arm64
           push: true
           tags: robpickerill/service-quotas:latest,robpickerill/service-quotas:${{  github.ref_name }}
+          cache-from: type=registry,ref=user/app:latest
+          cache-to: type=inline
