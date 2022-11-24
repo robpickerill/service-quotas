@@ -34,13 +34,3 @@ jobs:
           tags: robpickerill/service-quotas:latest,robpickerill/service-quotas:${{  github.ref_name }}
           cache-from: type=registry,ref=user/app:latest
           cache-to: type=inline
-
-      - name: Build and push ARM64
-        uses: docker/build-push-action@v3
-        with:
-          context: .
-          platforms: linux/arm64
-          push: true
-          tags: robpickerill/service-quotas:latest,robpickerill/service-quotas:${{  github.ref_name }}
-          cache-from: type=registry,ref=user/app:latest
-          cache-to: type=inline
