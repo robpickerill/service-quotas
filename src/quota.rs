@@ -1,4 +1,5 @@
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ServiceQuota {
     name: String,
     service_code: String,
@@ -10,11 +11,7 @@ impl ServiceQuota {
         Self {
             name: name.to_string(),
             service_code: service_code.to_string(),
-            utilization: utilization,
+            utilization,
         }
-    }
-
-    pub fn utilization(self) -> Option<u8> {
-        self.utilization
     }
 }

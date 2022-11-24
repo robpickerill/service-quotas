@@ -85,16 +85,18 @@ impl Client {
             .collect::<Result<Vec<_>, _>>()
             .await?;
 
+        let mut max_value = None;
         for result in results {
             let r = result.metric_data_results().unwrap();
 
-            return match get_max_value(r) {
-                Some(v) => Ok(v),
-                None => Err("failed to find any metric values")?,
-            };
+            if let Some(value) = get_max_value(r) {
+                if Some(value) > max_value {
+                    max_value = Some(value);
+                }
+            }
         }
 
-        return Err("failed to find metrics")?;
+        Ok(max_value.ok_or("failed to find metric values")?)
     }
 }
 

@@ -1,5 +1,3 @@
-use aws_sdk_servicequotas;
-
 use crate::{cloudwatch, quota::ServiceQuota, util};
 use tokio_stream::StreamExt;
 
@@ -16,9 +14,9 @@ impl Client {
         let cloudwatch_client = cloudwatch::Client::new().await;
 
         Self {
-            client: client,
-            cloudwatch_client: cloudwatch_client,
-            threshold: threshold,
+            client,
+            cloudwatch_client,
+            threshold,
         }
     }
 
@@ -58,12 +56,6 @@ impl Client {
 
                 let utilization = cw.service_quota_utilization(&query_input).await.ok();
 
-                // result.push(ServiceQuota::new(
-                //     quota.quota_name().unwrap(),
-                //     quota.service_code().unwrap(),
-                //     utilization,
-                // ));
-
                 if utilization > Some(self.threshold) {
                     breached_quotas.push(ServiceQuota::new(
                         quota.quota_name().unwrap(),
@@ -74,7 +66,7 @@ impl Client {
             }
         }
 
-        return Ok(breached_quotas);
+        Ok(breached_quotas)
     }
 }
 
