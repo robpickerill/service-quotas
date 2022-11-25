@@ -26,8 +26,8 @@ pub struct ServiceQuotaUtilizationQueryInput {
 }
 
 impl Client {
-    pub async fn new() -> Self {
-        let (config, retries) = util::aws_config().await;
+    pub async fn new(region: &str) -> Self {
+        let (config, retries) = util::aws_config_with_region(region).await;
         let client_config = aws_sdk_cloudwatch::config::Builder::from(&config)
             .retry_config(retries)
             .build();
