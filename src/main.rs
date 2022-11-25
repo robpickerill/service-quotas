@@ -1,12 +1,11 @@
-use std::sync::{Arc, Mutex};
-
-use clap::Parser;
-use tokio::sync::Semaphore;
-
-mod cloudwatch;
 mod quota;
-mod service;
+mod services;
 mod util;
+
+use self::services::servicequota;
+use clap::Parser;
+use std::sync::{Arc, Mutex};
+use tokio::sync::Semaphore;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -23,7 +22,7 @@ async fn main() {
 }
 
 async fn run(args: Args) {
-    let services = service::list_service_codes().await;
+    let services = servicequota::list_service_codes().await;
 
     let mut handlers = Vec::with_capacity(services.len());
     let permits = Arc::new(Semaphore::new(5));
@@ -38,7 +37,7 @@ async fn run(args: Args) {
             let _permit = permits.acquire().await.unwrap();
             let _breached_quotas = breached_quotas.clone();
 
-            let client = service::Client::new(args.threshold).await;
+            let client = servicequota::Client::new(args.threshold).await;
             let quotas = client.breached_quotas(&service).await;
 
             match quotas {

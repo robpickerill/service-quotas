@@ -1,4 +1,4 @@
-use crate::{cloudwatch, quota::ServiceQuota, util};
+use crate::{quota::Quota, services::cloudwatch, util};
 use tokio_stream::StreamExt;
 
 #[derive(Debug, Clone)]
@@ -23,7 +23,7 @@ impl Client {
     pub async fn breached_quotas(
         &self,
         service_code: &str,
-    ) -> Result<Vec<ServiceQuota>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<Quota>, Box<dyn std::error::Error>> {
         let paginator = self
             .client
             .list_service_quotas()
@@ -39,7 +39,7 @@ impl Client {
 
         let quotas = paginator.collect::<Result<Vec<_>, _>>().await?;
 
-        let mut breached_quotas: Vec<ServiceQuota> = Vec::new();
+        let mut breached_quotas: Vec<Quota> = Vec::new();
         for quota in quotas {
             let cw = self.cloudwatch_client.clone();
 
@@ -57,9 +57,10 @@ impl Client {
                 let utilization = cw.service_quota_utilization(&query_input).await.ok();
 
                 if utilization > Some(self.threshold) {
-                    breached_quotas.push(ServiceQuota::new(
+                    breached_quotas.push(Quota::new(
                         quota.quota_name().unwrap(),
                         quota.service_code().unwrap(),
+                        quota.quota_code().unwrap(),
                         utilization,
                     ))
                 };
