@@ -7,12 +7,6 @@ use aws_config::{
 };
 use aws_sdk_cloudwatch::Region;
 
-// aws_config loads aws configurations for use with aws clients, lifting the region from the
-// environment variable: AWS_REGION
-pub async fn aws_config() -> (SdkConfig, RetryConfig) {
-    (aws_config::load_from_env().await, retry_config())
-}
-
 // aws_config_with_region loads aws configurations for a specific region for use with aws clients
 pub async fn aws_config_with_region(region: &str) -> (SdkConfig, RetryConfig) {
     let region_provider = RegionProviderChain::first_try(Region::new(region.to_string()));
