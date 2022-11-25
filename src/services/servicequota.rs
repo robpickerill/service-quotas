@@ -5,17 +5,19 @@ use tokio_stream::StreamExt;
 pub struct Client {
     client: aws_sdk_servicequotas::Client,
     cloudwatch_client: cloudwatch::Client,
+    region: String,
     threshold: u8,
 }
 
 impl Client {
-    pub async fn new(threshold: u8) -> Self {
-        let client = build_client().await;
-        let cloudwatch_client = cloudwatch::Client::new().await;
+    pub async fn new(region: &str, threshold: u8) -> Self {
+        let client = build_client(region).await;
+        let cloudwatch_client = cloudwatch::Client::new(region).await;
 
         Self {
             client,
             cloudwatch_client,
+            region: region.to_string(),
             threshold,
         }
     }
@@ -33,8 +35,8 @@ impl Client {
             .send();
 
         println!(
-            "calculating utilization for quotas in service: {}",
-            service_code
+            "calculating utilization for quotas in region: {} for service: {}",
+            self.region, service_code
         );
 
         let quotas = paginator.collect::<Result<Vec<_>, _>>().await?;
@@ -61,6 +63,7 @@ impl Client {
                         quota.quota_name().unwrap(),
                         quota.service_code().unwrap(),
                         quota.quota_code().unwrap(),
+                        &self.region,
                         utilization,
                     ))
                 };
@@ -71,16 +74,16 @@ impl Client {
     }
 }
 
-async fn build_client() -> aws_sdk_servicequotas::Client {
-    let (config, retries) = util::aws_config().await;
+async fn build_client(region: &str) -> aws_sdk_servicequotas::Client {
+    let (config, retries) = util::aws_config_with_region(region).await;
     let client_config = aws_sdk_servicequotas::config::Builder::from(&config)
         .retry_config(retries)
         .build();
     aws_sdk_servicequotas::Client::from_conf(client_config)
 }
 
-pub async fn list_service_codes() -> Vec<String> {
-    let client = build_client().await;
+pub async fn list_service_codes(region: &str) -> Vec<String> {
+    let client = build_client(region).await;
     let result = client
         .list_services()
         .into_paginator()
