@@ -2,6 +2,7 @@
 
 - [Service Quotas](#service-quotas)
   - [Quick Start](#quick-start)
+  - [IAM Permissions](#iam-permissions)
 
 
 A CLI to calculate utilization of AWS service quotas, using [CloudWatch service quota usage metrics](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Service-Quota-Integration.html).
@@ -17,3 +18,47 @@ docker run -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN ro
 ```
 
 Note: AWS credentials are lifted from the environment variables.
+
+## IAM Permissions
+
+Permissions must be granted for the following actions:
+
+- cloudwatch:GetMetricData
+- ec2:DescribeRegions (if `--region` is not passed)
+- servicequotas:ListServices
+- servicequotas:ListServiceQuotas
+
+An example IAM policy is provided as:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "Allow CloudWatch",
+            "Action": [
+                "cloudwatch:GetMetricData"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+        {
+            "Sid": "Allow Ec2",
+            "Action": [
+                "ec2:DescribeRegions"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+        {
+            "Sid": "Allow Sevice Quotas",
+            "Action": [
+                "servicequotas:ListServices",
+                "servicequotas:ListServiceQuotas"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        }
+    ]
+}
+```
