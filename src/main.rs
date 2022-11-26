@@ -16,7 +16,7 @@ pub struct Args {
     )]
     threshold: u8,
 
-    #[arg(short, long, num_args(0..), help="the AWS region(s) to check quotas for, defaults to all")]
+    #[arg(short, long, num_args(0..), help="the AWS region(s) to check quotas for, defaults to all AWS regions")]
     regions: Vec<String>,
 }
 #[tokio::main]
