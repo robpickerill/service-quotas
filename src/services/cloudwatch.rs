@@ -52,7 +52,7 @@ impl Client {
 
         let metric_stat = MetricStat::builder()
             .metric(metric)
-            .period(3600)
+            .period(60)
             .stat(&query_input.statistic)
             .build();
 
