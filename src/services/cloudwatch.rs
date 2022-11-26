@@ -73,7 +73,6 @@ impl Client {
             .get_metric_data()
             .metric_data_queries(usage_data)
             .metric_data_queries(percentage_usage_data)
-            .max_datapoints(1)
             .start_time(DateTime::from_secs(start_time as i64))
             .end_time(DateTime::from_secs(end_time as i64))
             .into_paginator()
@@ -96,6 +95,8 @@ impl Client {
     }
 }
 
+// query times are quicker if we are able to sync times to the hour
+// https://docs.rs/aws-sdk-cloudwatch/0.21.0/aws_sdk_cloudwatch/struct.Client.html#method.get_metric_data
 fn query_times() -> (u64, u64) {
     let end_time = Utc::now()
         .duration_trunc(Duration::hours(1))
