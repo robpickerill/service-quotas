@@ -1,7 +1,7 @@
 // CloudWatch service APIs for querying quota utilization
 
+use chrono::{Duration, DurationRound, Utc};
 use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::util;
 use aws_sdk_cloudwatch::model::MetricDataResult;
@@ -40,13 +40,7 @@ impl Client {
         self,
         query_input: &ServiceQuotaUtilizationQueryInput,
     ) -> Result<u8, Box<dyn std::error::Error>> {
-        let end_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-            - 600;
-
-        let start_time = end_time - 900;
+        let (start_time, end_time) = query_times();
 
         let dimensions = hashmap_to_dimensions(&query_input.dimensions);
 
@@ -58,7 +52,7 @@ impl Client {
 
         let metric_stat = MetricStat::builder()
             .metric(metric)
-            .period(1800)
+            .period(3600)
             .stat(&query_input.statistic)
             .build();
 
@@ -100,6 +94,17 @@ impl Client {
 
         Ok(max_value.ok_or("failed to find metric values")?)
     }
+}
+
+fn query_times() -> (u64, u64) {
+    let end_time = Utc::now()
+        .duration_trunc(Duration::hours(1))
+        .unwrap()
+        .timestamp() as u64;
+
+    let start_time = end_time - 3600;
+
+    (start_time, end_time)
 }
 
 fn get_max_value(metric_data_results: &[MetricDataResult]) -> Option<u8> {
