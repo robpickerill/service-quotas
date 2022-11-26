@@ -35,7 +35,7 @@ An example IAM policy is provided as:
     "Version": "2012-10-17",
     "Statement": [
         {
-            "Sid": "Allow CloudWatch",
+            "Sid": "AllowCloudWatch",
             "Action": [
                 "cloudwatch:GetMetricData"
             ],
@@ -43,7 +43,7 @@ An example IAM policy is provided as:
             "Resource": "*"
         },
         {
-            "Sid": "Allow Ec2",
+            "Sid": "AllowEc2",
             "Action": [
                 "ec2:DescribeRegions"
             ],
@@ -51,7 +51,7 @@ An example IAM policy is provided as:
             "Resource": "*"
         },
         {
-            "Sid": "Allow Sevice Quotas",
+            "Sid": "AllowSeviceQuotas",
             "Action": [
                 "servicequotas:ListServices",
                 "servicequotas:ListServiceQuotas"
