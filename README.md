@@ -2,6 +2,8 @@
 
 - [Service Quotas](#service-quotas)
   - [Quick Start](#quick-start)
+  - [Notifications](#notifications)
+    - [Pagerduty](#pagerduty)
   - [IAM Permissions](#iam-permissions)
 
 
@@ -18,6 +20,18 @@ docker run -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN ro
 ```
 
 Note: AWS credentials are lifted from the environment variables.
+
+## Notifications
+
+Any service quotas that exceed the threshold will create notifications. At the time of writing, Pagerduty notifications are supported.
+
+### Pagerduty
+
+In order to enable pagerduty notifications, ensure the service routing key is available as an environment variable:
+
+```
+export PAGERDUTY_ROUTING_KEY=key_here
+```
 
 ## IAM Permissions
 
