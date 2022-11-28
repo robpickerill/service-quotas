@@ -27,7 +27,7 @@ Any service quotas that exceed the threshold will create notifications. At the t
 
 ### Pagerduty
 
-In order to enable pagerduty notifications, ensure the service routing key is available as an environment variable:
+In order to enable pagerduty notifications, ensure the service routing key for the [EventsV2 API](https://developer.pagerduty.com/docs/ZG9jOjExMDI5NTgw-events-api-v2-overview) is available as an environment variable:
 
 ```
 export PAGERDUTY_ROUTING_KEY=key_here
