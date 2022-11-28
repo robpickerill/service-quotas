@@ -11,7 +11,9 @@ use crate::util;
 pub enum ClientError {
     ReqwestError(reqwest::Error),
     InvalidHeaderValue(InvalidHeaderValue),
-    PagerdutyApiError(String),
+
+    // https://developer.pagerduty.com/docs/ZG9jOjExMDI5NTgw-events-api-v2-overview#response-codes--retry-logic
+    PagerdutyApiError(u16, String),
 }
 
 impl Error for ClientError {}
@@ -20,7 +22,13 @@ impl Display for ClientError {
         match self {
             Self::ReqwestError(e) => write!(f, "RequestError: {}", e),
             Self::InvalidHeaderValue(e) => write!(f, "InvalidHeaderValue: {}", e),
-            Self::PagerdutyApiError(e) => write!(f, "PagerdutyApiError: {}", e),
+            Self::PagerdutyApiError(status_code, error) => {
+                write!(
+                    f,
+                    "Pagerduty API Error statuscode: {}, error: {}, ",
+                    status_code, error
+                )
+            }
         }
     }
 }
@@ -131,7 +139,10 @@ impl Client {
 
         match result.status().as_u16() {
             202 => Ok(()),
-            _ => Err(ClientError::PagerdutyApiError(result.text().await?)),
+            _ => Err(ClientError::PagerdutyApiError(
+                result.status().as_u16(),
+                result.text().await?,
+            )),
         }
     }
 
