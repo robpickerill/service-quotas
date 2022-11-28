@@ -5,6 +5,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use crate::quota::Quota;
+use crate::util;
 
 #[derive(Debug)]
 pub enum ClientError {
@@ -103,14 +104,15 @@ impl Client {
             dedup_key: dedup_key,
             payload: Payload {
                 summary: format!(
-                    "Service Quota Breached: {} - {} in {} - {}",
+                    "Service Quota Utilization {}%: {} - {} in {} - {}",
+                    utilization,
                     quota.quota_code(),
                     quota.name(),
                     quota.account_id(),
                     quota.region(),
                 ),
-                source: "aws-quota-monitor".to_string(),
-                severity: "error".to_string(),
+                source: "https://github.com/robpickerill/service-quotas".to_string(),
+                severity: "warning".to_string(),
                 custom_details: CustomDetails {
                     arn: quota.arn().to_string(),
                     account_id: quota.account_id().to_string(),
