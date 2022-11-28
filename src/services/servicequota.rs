@@ -1,5 +1,38 @@
-use crate::{quota::Quota, services::cloudwatch, util};
+use crate::util;
+use crate::{quota::Quota, quota::QuotaError, services::cloudwatch};
+
+use aws_sdk_cloudwatch::types::SdkError;
+use aws_sdk_servicequotas::error::ListServiceQuotasError;
+use std::error::Error;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 use tokio_stream::StreamExt;
+
+#[derive(Debug)]
+pub enum ServiceQuotaError {
+    QuotaError(QuotaError),
+    AwsSdkError(SdkError<ListServiceQuotasError>),
+}
+
+impl Error for ServiceQuotaError {}
+impl Display for ServiceQuotaError {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            Self::QuotaError(e) => write!(f, "QuotaError: {}", e),
+            Self::AwsSdkError(e) => write!(f, "AwsSdkError: {}", e),
+        }
+    }
+}
+
+impl From<QuotaError> for ServiceQuotaError {
+    fn from(err: QuotaError) -> Self {
+        Self::QuotaError(err)
+    }
+}
+impl From<SdkError<ListServiceQuotasError>> for ServiceQuotaError {
+    fn from(err: SdkError<ListServiceQuotasError>) -> Self {
+        Self::AwsSdkError(err)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Client {
@@ -25,7 +58,7 @@ impl Client {
     pub async fn breached_quotas(
         &self,
         service_code: &str,
-    ) -> Result<Vec<Quota>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<Quota>, ServiceQuotaError> {
         let paginator = self
             .client
             .list_service_quotas()
@@ -60,12 +93,10 @@ impl Client {
 
                 if utilization > Some(self.threshold) {
                     breached_quotas.push(Quota::new(
+                        quota.quota_arn().unwrap(),
                         quota.quota_name().unwrap(),
-                        quota.service_code().unwrap(),
-                        quota.quota_code().unwrap(),
-                        &self.region,
                         utilization,
-                    ))
+                    )?)
                 };
             }
         }

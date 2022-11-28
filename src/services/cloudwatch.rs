@@ -1,16 +1,40 @@
 // CloudWatch service APIs for querying quota utilization
 
+use aws_sdk_cloudwatch::error::GetMetricDataError;
 use chrono::{Duration, DurationRound, Utc};
 use std::collections::HashMap;
 
 use crate::util;
-use aws_sdk_cloudwatch::model::MetricDataResult;
 use aws_sdk_cloudwatch::{
     self,
-    model::{Dimension, Metric, MetricDataQuery, MetricStat},
-    types::DateTime,
+    model::{Dimension, Metric, MetricDataQuery, MetricDataResult, MetricStat},
+    types::{DateTime, SdkError},
 };
+use std::error::Error;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 use tokio_stream::StreamExt;
+
+#[derive(Debug)]
+pub enum CloudWatchError {
+    MissingMetricData,
+    AwsSdkError(SdkError<GetMetricDataError>),
+}
+
+impl Error for CloudWatchError {}
+impl Display for CloudWatchError {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            Self::MissingMetricData => write!(f, "MissingMetricData"),
+            Self::AwsSdkError(e) => write!(f, "AwsSdkError: {}", e),
+        }
+    }
+}
+
+impl From<SdkError<GetMetricDataError>> for CloudWatchError {
+    fn from(err: SdkError<GetMetricDataError>) -> Self {
+        Self::AwsSdkError(err)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Client {
@@ -39,7 +63,7 @@ impl Client {
     pub async fn service_quota_utilization(
         self,
         query_input: &ServiceQuotaUtilizationQueryInput,
-    ) -> Result<u8, Box<dyn std::error::Error>> {
+    ) -> Result<u8, CloudWatchError> {
         let (start_time, end_time) = query_times();
 
         let dimensions = hashmap_to_dimensions(&query_input.dimensions);
@@ -91,7 +115,9 @@ impl Client {
             }
         }
 
-        Ok(max_value.ok_or("failed to find metric values")?)
+        max_value
+            .map(|v| v as u8)
+            .ok_or(CloudWatchError::MissingMetricData)
     }
 }
 
