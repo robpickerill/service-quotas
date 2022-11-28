@@ -5,7 +5,6 @@ use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use crate::quota::Quota;
-use crate::util;
 
 #[derive(Debug)]
 pub enum ClientError {
