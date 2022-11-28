@@ -1,4 +1,5 @@
 mod cli;
+mod notifiers;
 mod quota;
 mod services;
 mod util;
@@ -22,5 +23,5 @@ pub struct Args {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
-    cli::run(args).await;
+    cli::run(args).await.unwrap();
 }
