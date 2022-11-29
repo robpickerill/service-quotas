@@ -1,9 +1,11 @@
+use async_trait::async_trait;
 use reqwest::header::{HeaderMap, HeaderValue, InvalidHeaderValue, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use std::convert::From;
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
+use crate::notifiers::Notifier;
 use crate::quota::Quota;
 
 #[derive(Debug)]
@@ -95,8 +97,30 @@ impl Client {
         })
     }
 
+    fn dedup_key(&self, quota: &Quota) -> String {
+        format!(
+            "{}-{}-{}",
+            quota.quota_code(),
+            quota.region(),
+            quota.account_id()
+        )
+    }
+
+    fn trigger_action(&self, utilization: Option<u8>) -> String {
+        if utilization >= Some(self.threshold) {
+            return String::from("trigger");
+        }
+
+        String::from("resolve")
+    }
+}
+
+#[async_trait]
+impl Notifier for Client {
+    type Error = ClientError;
+
     #[allow(clippy::redundant_field_names)]
-    pub async fn notify(&self, quota: Quota) -> Result<(), ClientError> {
+    async fn notify(&self, quota: Quota) -> Result<(), Self::Error> {
         let url = "https://events.pagerduty.com/v2/enqueue";
         let trigger_action = self.trigger_action(quota.utilization());
         let dedup_key = self.dedup_key(&quota);
@@ -143,23 +167,6 @@ impl Client {
                 result.text().await?,
             )),
         }
-    }
-
-    fn dedup_key(&self, quota: &Quota) -> String {
-        format!(
-            "{}-{}-{}",
-            quota.quota_code(),
-            quota.region(),
-            quota.account_id()
-        )
-    }
-
-    fn trigger_action(&self, utilization: Option<u8>) -> String {
-        if utilization >= Some(self.threshold) {
-            return String::from("trigger");
-        }
-
-        String::from("resolve")
     }
 }
 
