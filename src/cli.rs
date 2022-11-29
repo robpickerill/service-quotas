@@ -1,4 +1,6 @@
 use crate::notifiers;
+use crate::notifiers::Notifier;
+use crate::quota::Quota;
 use crate::services::{self, servicequota};
 use crate::Args;
 
@@ -19,6 +21,16 @@ async fn resolve_regions(regions: Vec<String>) -> Vec<String> {
 
 fn lift_pagerduty_routing_key() -> Option<String> {
     std::env::var("PAGERDUTY_ROUTING_KEY").ok()
+}
+
+async fn notify<T: Notifier>(notifier: T, breached_quotas: Arc<Mutex<Vec<Quota>>>) {
+    for quota in breached_quotas.lock().await.iter() {
+        let result = notifier.notify(quota.clone()).await;
+
+        if let Err(err) = result {
+            println!("pagerduty error: {}", err)
+        }
+    }
 }
 
 pub async fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
@@ -70,14 +82,7 @@ pub async fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(pd_key) = lift_pagerduty_routing_key() {
         let pagerduty = notifiers::pagerduty::Client::new(&pd_key, args.threshold)?;
-
-        for quota in breached_quotas.lock().await.iter() {
-            let result = pagerduty.notify(quota.clone()).await;
-
-            if let Err(err) = result {
-                println!("pagerduty error: {}", err)
-            }
-        }
+        notify(pagerduty, breached_quotas).await;
     }
 
     Ok(())
