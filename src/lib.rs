@@ -7,7 +7,7 @@ mod util;
 
 use async_mutex::Mutex;
 use services::servicequota;
-use std::{collections::HashMap, hash::Hash, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::Semaphore;
 
 #[macro_use]

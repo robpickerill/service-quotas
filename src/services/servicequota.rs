@@ -10,8 +10,8 @@ use tokio_stream::StreamExt;
 #[derive(Debug)]
 pub enum ServiceQuotaError {
     QuotaError(QuotaError),
-    AwsSdkErrorListServiceQuotasError(SdkError<ListServiceQuotasError>),
-    AwsSdkErrorListServicesError(SdkError<ListServicesError>),
+    AwsSdkErrorListServiceQuotas(SdkError<ListServiceQuotasError>),
+    AwsSdkErrorListServices(SdkError<ListServicesError>),
 }
 
 impl Error for ServiceQuotaError {}
@@ -19,8 +19,8 @@ impl Display for ServiceQuotaError {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
             Self::QuotaError(e) => write!(f, "QuotaError: {}", e),
-            Self::AwsSdkErrorListServiceQuotasError(e) => write!(f, "AwsSdkError: {}", e),
-            Self::AwsSdkErrorListServicesError(e) => write!(f, "AwsSdkError: {}", e),
+            Self::AwsSdkErrorListServiceQuotas(e) => write!(f, "AwsSdkError: {}", e),
+            Self::AwsSdkErrorListServices(e) => write!(f, "AwsSdkError: {}", e),
         }
     }
 }
@@ -32,12 +32,12 @@ impl From<QuotaError> for ServiceQuotaError {
 }
 impl From<SdkError<ListServiceQuotasError>> for ServiceQuotaError {
     fn from(err: SdkError<ListServiceQuotasError>) -> Self {
-        Self::AwsSdkErrorListServiceQuotasError(err)
+        Self::AwsSdkErrorListServiceQuotas(err)
     }
 }
 impl From<SdkError<ListServicesError>> for ServiceQuotaError {
     fn from(err: SdkError<ListServicesError>) -> Self {
-        Self::AwsSdkErrorListServicesError(err)
+        Self::AwsSdkErrorListServices(err)
     }
 }
 
@@ -60,10 +60,6 @@ impl Client {
             region: region.to_string(),
             threshold,
         }
-    }
-
-    pub fn region(&self) -> &str {
-        &self.region
     }
 
     pub async fn service_codes(&self) -> Result<Vec<String>, ServiceQuotaError> {
