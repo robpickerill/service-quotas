@@ -2,7 +2,7 @@ use crate::util;
 use crate::{quota::Quota, quota::QuotaError, services::cloudwatch};
 
 use aws_sdk_cloudwatch::types::SdkError;
-use aws_sdk_servicequotas::error::ListServiceQuotasError;
+use aws_sdk_servicequotas::error::{ListServiceQuotasError, ListServicesError};
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use tokio_stream::StreamExt;
@@ -10,7 +10,8 @@ use tokio_stream::StreamExt;
 #[derive(Debug)]
 pub enum ServiceQuotaError {
     QuotaError(QuotaError),
-    AwsSdkError(SdkError<ListServiceQuotasError>),
+    AwsSdkErrorListServiceQuotasError(SdkError<ListServiceQuotasError>),
+    AwsSdkErrorListServicesError(SdkError<ListServicesError>),
 }
 
 impl Error for ServiceQuotaError {}
@@ -18,7 +19,8 @@ impl Display for ServiceQuotaError {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
             Self::QuotaError(e) => write!(f, "QuotaError: {}", e),
-            Self::AwsSdkError(e) => write!(f, "AwsSdkError: {}", e),
+            Self::AwsSdkErrorListServiceQuotasError(e) => write!(f, "AwsSdkError: {}", e),
+            Self::AwsSdkErrorListServicesError(e) => write!(f, "AwsSdkError: {}", e),
         }
     }
 }
@@ -30,7 +32,12 @@ impl From<QuotaError> for ServiceQuotaError {
 }
 impl From<SdkError<ListServiceQuotasError>> for ServiceQuotaError {
     fn from(err: SdkError<ListServiceQuotasError>) -> Self {
-        Self::AwsSdkError(err)
+        Self::AwsSdkErrorListServiceQuotasError(err)
+    }
+}
+impl From<SdkError<ListServicesError>> for ServiceQuotaError {
+    fn from(err: SdkError<ListServicesError>) -> Self {
+        Self::AwsSdkErrorListServicesError(err)
     }
 }
 
@@ -59,7 +66,7 @@ impl Client {
         &self.region
     }
 
-    pub async fn service_codes(&self) -> Vec<String> {
+    pub async fn service_codes(&self) -> Result<Vec<String>, ServiceQuotaError> {
         let result = self
             .client
             .list_services()
@@ -67,13 +74,12 @@ impl Client {
             .items()
             .send()
             .collect::<Result<Vec<_>, _>>()
-            .await
-            .unwrap();
+            .await?;
 
-        result
+        Ok(result
             .into_iter()
             .map(|s| s.service_code().unwrap().to_string())
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>())
     }
 
     pub async fn breached_quotas(

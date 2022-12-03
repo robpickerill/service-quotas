@@ -58,7 +58,7 @@ pub async fn run(args: &clap::ArgMatches) -> Result<(), Box<dyn std::error::Erro
 
     for region in regions {
         let client = servicequota::Client::new(&region, threshold).await;
-        let service_codes = client.service_codes().await;
+        let service_codes = client.service_codes().await?;
 
         for service_code in service_codes {
             let permits = Arc::clone(&permits);
