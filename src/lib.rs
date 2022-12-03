@@ -1,4 +1,5 @@
-mod cli;
+pub mod cli;
+
 mod notifiers;
 mod quota;
 mod services;
