@@ -8,10 +8,12 @@ publish = false
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
-tokio-stream = "0.1.11"
-aws-config = "0.51.0"
+tokio-stream = "0.1"
+aws-config = "0.51"
 aws-sdk-ec2 = "0.21.0"
 aws-sdk-servicequotas = "0.21.0"
 aws-sdk-cloudwatch = "0.21.0"
-clap = { version = "4.0.26", features = ["derive"] }
-chrono = "0.4.23"
+chrono = "0.4"
+clap = { version = "4.0", features = ["derive"] }
+env_logger = "0.10"
+log = "0.4"

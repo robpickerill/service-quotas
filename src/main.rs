@@ -4,6 +4,10 @@ mod services;
 mod util;
 
 use clap::Parser;
+use env_logger::Env;
+
+#[macro_use]
+extern crate log;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -22,5 +26,10 @@ pub struct Args {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
+
+    env_logger::Builder::from_env(Env::default().default_filter_or("info,aws_config=error")).init();
+    info!("threshold: {}", args.threshold);
+    info!("regions: {}", args.regions.join(", "));
+
     cli::run(args).await;
 }

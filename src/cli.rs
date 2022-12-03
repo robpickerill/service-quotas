@@ -38,7 +38,7 @@ pub async fn run(args: Args) {
                 let quotas = client.breached_quotas(&service).await;
 
                 match quotas {
-                    Err(err) => println!("{} quota lookup failed:{}", service, err),
+                    Err(err) => error!("{} quota lookup failed:{}", service, err),
                     Ok(results) => {
                         for result in results {
                             _breached_quotas.lock().unwrap().push(result)
@@ -54,11 +54,11 @@ pub async fn run(args: Args) {
         let result = handler.await;
 
         if let Err(err) = result {
-            println!("error: {}", err)
+            error!("error: {}", err)
         }
     }
 
     for quota in breached_quotas.lock().unwrap().iter() {
-        println!("{:?}", quota);
+        info!("{:?}", quota);
     }
 }
