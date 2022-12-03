@@ -55,6 +55,27 @@ impl Client {
         }
     }
 
+    pub fn region(&self) -> &str {
+        &self.region
+    }
+
+    pub async fn service_codes(&self) -> Vec<String> {
+        let result = self
+            .client
+            .list_services()
+            .into_paginator()
+            .items()
+            .send()
+            .collect::<Result<Vec<_>, _>>()
+            .await
+            .unwrap();
+
+        result
+            .into_iter()
+            .map(|s| s.service_code().unwrap().to_string())
+            .collect::<Vec<_>>()
+    }
+
     pub async fn breached_quotas(
         &self,
         service_code: &str,
@@ -111,21 +132,4 @@ async fn build_client(region: &str) -> aws_sdk_servicequotas::Client {
         .retry_config(retries)
         .build();
     aws_sdk_servicequotas::Client::from_conf(client_config)
-}
-
-pub async fn list_service_codes(region: &str) -> Vec<String> {
-    let client = build_client(region).await;
-    let result = client
-        .list_services()
-        .into_paginator()
-        .items()
-        .send()
-        .collect::<Result<Vec<_>, _>>()
-        .await
-        .unwrap();
-
-    result
-        .into_iter()
-        .map(|s| s.service_code().unwrap().to_string())
-        .collect::<Vec<_>>()
 }

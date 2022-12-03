@@ -6,7 +6,8 @@ mod services;
 mod util;
 
 use async_mutex::Mutex;
-use std::sync::Arc;
+use services::servicequota;
+use std::{collections::HashMap, hash::Hash, sync::Arc};
 use tokio::sync::Semaphore;
 
 #[macro_use]
@@ -53,26 +54,25 @@ pub async fn run(args: &clap::ArgMatches) -> Result<(), Box<dyn std::error::Erro
 
     let mut handlers = Vec::new();
     let permits = Arc::new(Semaphore::new(5));
-
     let breached_quotas = Arc::new(Mutex::new(Vec::new()));
 
     for region in regions {
-        let services = services::servicequota::list_service_codes(&region.clone()).await;
+        let client = servicequota::Client::new(&region, threshold).await;
+        let service_codes = client.service_codes().await;
 
-        for service in services {
+        for service_code in service_codes {
             let permits = Arc::clone(&permits);
+            let client_ = client.clone();
             let breached_quotas = Arc::clone(&breached_quotas);
 
-            let region_ = region.clone();
             let handler = tokio::spawn(async move {
                 let _permit = permits.acquire().await.unwrap();
                 let _breached_quotas = breached_quotas.clone();
 
-                let client = services::servicequota::Client::new(&region_, threshold).await;
-                let quotas = client.breached_quotas(&service).await;
+                let quotas = client_.breached_quotas(&service_code).await;
 
                 match quotas {
-                    Err(err) => error!("{} quota lookup failed:{}", service, err),
+                    Err(err) => error!("{} quota lookup failed:{}", service_code, err),
                     Ok(results) => {
                         for result in results {
                             _breached_quotas.lock().await.push(result)
