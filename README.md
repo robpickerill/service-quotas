@@ -38,7 +38,6 @@ export PAGERDUTY_ROUTING_KEY=key_here
 Permissions must be granted for the following actions:
 
 - cloudwatch:GetMetricData
-- ec2:DescribeRegions (if `--region` is not passed)
 - servicequotas:ListServices
 - servicequotas:ListServiceQuotas
 
@@ -52,14 +51,6 @@ An example IAM policy is provided as:
             "Sid": "AllowCloudWatch",
             "Action": [
                 "cloudwatch:GetMetricData"
-            ],
-            "Effect": "Allow",
-            "Resource": "*"
-        },
-        {
-            "Sid": "AllowEc2",
-            "Action": [
-                "ec2:DescribeRegions"
             ],
             "Effect": "Allow",
             "Resource": "*"

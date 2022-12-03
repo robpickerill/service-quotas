@@ -12,7 +12,6 @@ tokio-stream = "0.1"
 async-mutex = "1.4"
 async-trait = "0.1"
 aws-config = "0.51"
-aws-sdk-ec2 = "0.21"
 aws-sdk-servicequotas = "0.21"
 aws-sdk-cloudwatch = "0.21"
 clap = { version = "4.0", features = ["derive"] }
