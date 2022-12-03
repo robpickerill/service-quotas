@@ -67,7 +67,7 @@ impl Client {
             .items()
             .send();
 
-        println!(
+        info!(
             "calculating utilization for quotas in region: {} for service: {}",
             self.region, service_code
         );

@@ -17,7 +17,8 @@ aws-sdk-servicequotas = "0.21"
 aws-sdk-cloudwatch = "0.21"
 clap = { version = "4.0", features = ["derive"] }
 chrono = "0.4"
+env_logger = "0.10"
+log = "0.4"
 reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-
