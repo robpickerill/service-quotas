@@ -1,7 +1,11 @@
+use crate::notifiers;
+use crate::notifiers::Notifier;
+use crate::quota::Quota;
 use crate::services::{self, servicequota};
 use crate::Args;
 
-use std::sync::{Arc, Mutex};
+use async_mutex::Mutex;
+use std::sync::Arc;
 use tokio::sync::Semaphore;
 
 async fn resolve_regions(regions: Vec<String>) -> Vec<String> {
@@ -15,7 +19,21 @@ async fn resolve_regions(regions: Vec<String>) -> Vec<String> {
     regions
 }
 
-pub async fn run(args: Args) {
+fn lift_pagerduty_routing_key() -> Option<String> {
+    std::env::var("PAGERDUTY_ROUTING_KEY").ok()
+}
+
+async fn notify<T: Notifier>(notifier: T, breached_quotas: Arc<Mutex<Vec<Quota>>>) {
+    for quota in breached_quotas.lock().await.iter() {
+        let result = notifier.notify(quota.clone()).await;
+
+        if let Err(err) = result {
+            println!("pagerduty error: {}", err)
+        }
+    }
+}
+
+pub async fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let mut handlers = Vec::new();
     let permits = Arc::new(Semaphore::new(5));
 
@@ -41,7 +59,7 @@ pub async fn run(args: Args) {
                     Err(err) => error!("{} quota lookup failed:{}", service, err),
                     Ok(results) => {
                         for result in results {
-                            _breached_quotas.lock().unwrap().push(result)
+                            _breached_quotas.lock().await.push(result)
                         }
                     }
                 }
@@ -58,7 +76,14 @@ pub async fn run(args: Args) {
         }
     }
 
-    for quota in breached_quotas.lock().unwrap().iter() {
+    for quota in breached_quotas.lock().await.iter() {
         info!("{:?}", quota);
     }
+
+    if let Some(pd_key) = lift_pagerduty_routing_key() {
+        let pagerduty = notifiers::pagerduty::Client::new(&pd_key, args.threshold)?;
+        notify(pagerduty, breached_quotas).await;
+    }
+
+    Ok(())
 }

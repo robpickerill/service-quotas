@@ -1,4 +1,5 @@
 mod cli;
+mod notifiers;
 mod quota;
 mod services;
 mod util;
@@ -31,5 +32,5 @@ async fn main() {
     info!("threshold: {}", args.threshold);
     info!("regions: {}", args.regions.join(", "));
 
-    cli::run(args).await;
+    cli::run(args).await.unwrap();
 }
