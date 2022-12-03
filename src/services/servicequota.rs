@@ -45,20 +45,16 @@ impl From<SdkError<ListServicesError>> for ServiceQuotaError {
 pub struct Client {
     client: aws_sdk_servicequotas::Client,
     cloudwatch_client: cloudwatch::Client,
-    region: String,
-    threshold: u8,
 }
 
 impl Client {
-    pub async fn new(region: &str, threshold: u8) -> Self {
+    pub async fn new(region: &str) -> Self {
         let client = build_client(region).await;
         let cloudwatch_client = cloudwatch::Client::new(region).await;
 
         Self {
             client,
             cloudwatch_client,
-            region: region.to_string(),
-            threshold,
         }
     }
 
@@ -78,10 +74,7 @@ impl Client {
             .collect::<Vec<_>>())
     }
 
-    pub async fn breached_quotas(
-        &self,
-        service_code: &str,
-    ) -> Result<Vec<Quota>, ServiceQuotaError> {
+    pub async fn quotas(&self, service_code: &str) -> Result<Vec<Quota>, ServiceQuotaError> {
         let paginator = self
             .client
             .list_service_quotas()
@@ -90,15 +83,10 @@ impl Client {
             .items()
             .send();
 
-        info!(
-            "calculating utilization for quotas in region: {} for service: {}",
-            self.region, service_code
-        );
+        let all_quotas = paginator.collect::<Result<Vec<_>, _>>().await?;
 
-        let quotas = paginator.collect::<Result<Vec<_>, _>>().await?;
-
-        let mut breached_quotas: Vec<Quota> = Vec::new();
-        for quota in quotas {
+        let mut quotas: Vec<Quota> = Vec::new();
+        for quota in all_quotas {
             let cw = self.cloudwatch_client.clone();
 
             if let Some(metric_info) = quota.usage_metric() {
@@ -114,17 +102,15 @@ impl Client {
 
                 let utilization = cw.service_quota_utilization(&query_input).await.ok();
 
-                if utilization > Some(self.threshold) {
-                    breached_quotas.push(Quota::new(
-                        quota.quota_arn().unwrap(),
-                        quota.quota_name().unwrap(),
-                        utilization,
-                    )?)
-                };
+                quotas.push(Quota::new(
+                    quota.quota_arn().unwrap(),
+                    quota.quota_name().unwrap(),
+                    utilization,
+                )?);
             }
         }
 
-        Ok(breached_quotas)
+        Ok(quotas)
     }
 }
 
