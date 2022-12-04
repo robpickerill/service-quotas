@@ -16,10 +16,15 @@ The CLI will discover all service quotas via the [list-services](https://docs.aw
 ```
 docker run robpickerill/service-quotas -h
 
-docker run -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN robpickerill/service-quotas -r us-east-1 us-west-2
+# help output
+docker run -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN robpickerill/service-quotas -h
+
+# run over multiple regions, ignoring the quota code: L-E9E9831D
+docker run -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN robpickerill/service-quotas -r us-east-1 us-west-2 -i L-E9E9831D
 ```
 
 Note: AWS credentials are lifted from the environment variables.
+
 
 ## Notifications
 

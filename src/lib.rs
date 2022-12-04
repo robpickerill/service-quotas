@@ -1,5 +1,6 @@
 pub mod cli;
 
+mod config;
 mod notifiers;
 mod quota;
 mod services;
@@ -7,7 +8,7 @@ mod util;
 
 use async_mutex::Mutex;
 use services::servicequota;
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 use tokio::sync::Semaphore;
 
 #[macro_use]
@@ -20,8 +21,17 @@ fn lift_pagerduty_routing_key() -> Option<String> {
 async fn notify(
     notifier: impl notifiers::Notifier,
     breached_quotas: Arc<Mutex<Vec<quota::Quota>>>,
+    ignored_quotas: &HashSet<String>,
 ) {
     for quota in breached_quotas.lock().await.iter() {
+        if ignored_quotas.contains(&quota.quota_code().to_string()) {
+            info!(
+                "Ignoring quota {} as it is in the ignore list",
+                quota.quota_code()
+            );
+            continue;
+        }
+
         let result = notifier.notify(quota.clone()).await;
 
         if let Err(err) = result {
@@ -30,35 +40,36 @@ async fn notify(
     }
 }
 
-fn get_regions(args: &clap::ArgMatches) -> Vec<String> {
-    let regions = args
-        .get_many::<String>("regions")
-        .unwrap()
-        .cloned()
-        .collect::<Vec<_>>();
-
-    if regions.is_empty() {
-        vec!["us-east-1".to_string()]
-    } else {
-        regions
-    }
-}
-
-fn get_threshold(args: &clap::ArgMatches) -> u8 {
-    args.get_one::<u8>("threshold").unwrap_or(&75).to_owned()
+fn log_startup(config: &config::Config) {
+    info!(
+        "Starting up: {} {}",
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION")
+    );
+    info!("Region: {}", config.regions().join(", "));
+    info!("Threshold: {}", config.threshold());
+    info!(
+        "Ignored quotas: {}",
+        config
+            .ignored_quotas()
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
 }
 
 pub async fn run(args: &clap::ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
-    let regions = get_regions(args);
-    let threshold = get_threshold(args);
+    let config = config::Config::new(args);
+    log_startup(&config);
 
     let mut handlers = Vec::new();
     let all_quotas = Arc::new(Mutex::new(Vec::new()));
 
-    for region in regions {
+    for region in config.regions() {
         info!("checking for quotas in region {}", region);
 
-        let client = servicequota::Client::new(&region).await;
+        let client = servicequota::Client::new(region).await;
         let service_codes = client.service_codes().await?;
         let permits = Arc::new(Semaphore::new(3));
 
@@ -102,7 +113,7 @@ pub async fn run(args: &clap::ArgMatches) -> Result<(), Box<dyn std::error::Erro
     }
 
     for quota in all_quotas.lock().await.iter() {
-        if quota.utilization() > Some(threshold) {
+        if quota.utilization() > Some(config.threshold()) {
             info!(
                 "{:15}: {:30} {:12} {:30} : {:3}%",
                 quota.region(),
@@ -115,8 +126,8 @@ pub async fn run(args: &clap::ArgMatches) -> Result<(), Box<dyn std::error::Erro
     }
 
     if let Some(pd_key) = lift_pagerduty_routing_key() {
-        let pagerduty = notifiers::pagerduty::Client::new(&pd_key, threshold)?;
-        notify(pagerduty, all_quotas).await;
+        let pagerduty = notifiers::pagerduty::Client::new(&pd_key, config.threshold())?;
+        notify(pagerduty, all_quotas, config.ignored_quotas()).await;
     }
 
     Ok(())

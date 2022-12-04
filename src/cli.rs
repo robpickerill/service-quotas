@@ -14,11 +14,16 @@ fn common_args() -> Vec<Arg> {
         Arg::new("threshold")
             .short('t')
             .long("threshold")
-            .help("the threshold to alert at for utlization of a service quota"),
+            .help("The threshold to alert at for utlization of a service quota"),
         Arg::new("regions")
             .short('r')
             .long("regions")
             .num_args(1..)
-            .help("the AWS region(s) to check quotas for, defaults to all AWS regions"),
+            .help("The AWS region(s) to check quotas for, defaults to all AWS regions"),
+        Arg::new("ignore")
+            .short('i')
+            .long("ignore")
+            .num_args(1..)
+            .help("The quota codes to ignore, defaults to none"),
     ]
 }
