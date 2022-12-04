@@ -115,7 +115,7 @@ async fn notify(
             continue;
         }
 
-        let result = notifier.notify(quota.clone()).await;
+        let result = notifier.notify(quota).await;
 
         if let Err(err) = result {
             println!("pagerduty error: {}", err)

@@ -8,5 +8,5 @@ use std::error::Error;
 pub trait Notifier {
     type Error: Error;
 
-    async fn notify(&self, quota: Quota) -> Result<(), Self::Error>;
+    async fn notify(&self, quota: &Quota) -> Result<(), Self::Error>;
 }

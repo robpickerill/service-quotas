@@ -120,10 +120,10 @@ impl Notifier for Client {
     type Error = ClientError;
 
     #[allow(clippy::redundant_field_names)]
-    async fn notify(&self, quota: Quota) -> Result<(), Self::Error> {
+    async fn notify(&self, quota: &Quota) -> Result<(), Self::Error> {
         let url = "https://events.pagerduty.com/v2/enqueue";
         let trigger_action = self.trigger_action(quota.utilization());
-        let dedup_key = self.dedup_key(&quota);
+        let dedup_key = self.dedup_key(quota);
 
         let Some(utilization) = quota.utilization() else {
             return Ok(());
@@ -153,7 +153,7 @@ impl Notifier for Client {
                     quota_code: quota.quota_code().to_string(),
                     threshold: self.threshold,
                     utilization_percentage: utilization,
-                    service_quota_url: service_quota_url(&quota),
+                    service_quota_url: service_quota_url(quota),
                 },
             },
         };
