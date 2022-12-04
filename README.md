@@ -21,8 +21,11 @@ docker run robpickerill/service-quotas -h
 # help output
 docker run -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN robpickerill/service-quotas -h
 
+# display supported quotas for multiple regions
+docker run -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN robpickerill/service-quotas list-quotas -r eu-west-1 eu-west-2
+
 # run over multiple regions, ignoring the quota code: L-E9E9831D
-docker run -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN robpickerill/service-quotas -r us-east-1 us-west-2 -i L-E9E9831D
+docker run -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN robpickerill/service-quotas utilization -r us-east-1 us-east-2 us-west-2 -i L-E9E9831D
 ```
 
 Note: AWS credentials are lifted from the environment variables.

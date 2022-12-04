@@ -35,7 +35,9 @@ impl Config {
 
 fn regions(args: &clap::ArgMatches) -> Vec<String> {
     let regions = args
-        .get_many::<String>("regions")
+        .try_get_many::<String>("regions")
+        .ok()
+        .flatten()
         .unwrap_or_default()
         .cloned()
         .collect::<Vec<_>>();
@@ -48,11 +50,17 @@ fn regions(args: &clap::ArgMatches) -> Vec<String> {
 }
 
 fn threshold(args: &clap::ArgMatches) -> u8 {
-    args.get_one::<u8>("threshold").unwrap_or(&75).to_owned()
+    args.try_get_one::<u8>("threshold")
+        .ok()
+        .flatten()
+        .unwrap_or(&75)
+        .to_owned()
 }
 
 fn ignored_quotas(args: &clap::ArgMatches) -> HashSet<String> {
-    args.get_many::<String>("ignore")
+    args.try_get_many::<String>("ignore")
+        .ok()
+        .flatten()
         .unwrap_or_default()
         .cloned()
         .collect::<HashSet<_>>()
