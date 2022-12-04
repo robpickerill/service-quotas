@@ -13,7 +13,7 @@ The CLI will discover all service quotas via the [list-services](https://docs.aw
 
 ## Quick Start
 
-```
+```bash
 docker run robpickerill/service-quotas -h
 
 # help output
@@ -34,7 +34,7 @@ Any service quotas that exceed the threshold will create notifications. At the t
 
 In order to enable pagerduty notifications, ensure the service routing key for the [EventsV2 API](https://developer.pagerduty.com/docs/ZG9jOjExMDI5NTgw-events-api-v2-overview) is available as an environment variable:
 
-```
+```bash
 export PAGERDUTY_ROUTING_KEY=key_here
 ```
 
