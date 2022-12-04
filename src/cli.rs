@@ -19,7 +19,7 @@ fn common_args() -> Vec<Arg> {
 
 fn list_quotas() -> Command {
     Command::new("list-quotas")
-        .about("List all quotas")
+        .about("List all supported quotas")
         .args(&common_args())
 }
 
