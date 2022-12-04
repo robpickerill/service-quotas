@@ -15,7 +15,7 @@ use tokio::sync::Semaphore;
 #[macro_use]
 extern crate log;
 
-pub async fn run(args: &clap::ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn utilization(args: &clap::ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
     let config = config::Config::new(args);
     log_startup(&config);
 
@@ -73,6 +73,25 @@ pub async fn run(args: &clap::ArgMatches) -> Result<(), Box<dyn std::error::Erro
     if let Some(pd_key) = lift_pagerduty_routing_key() {
         let pagerduty = notifiers::pagerduty::Client::new(&pd_key, config.threshold())?;
         notify(pagerduty, all_quotas, config.ignored_quotas()).await;
+    }
+
+    Ok(())
+}
+
+pub async fn list_quotas(args: &clap::ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
+    let config = config::Config::new(args);
+
+    for region in config.regions() {
+        let client = servicequota::Client::new(region).await;
+        let service_codes = client.service_codes().await?;
+
+        for service_code in service_codes {
+            let quotas = client.quotas(&service_code).await?;
+
+            for quota in quotas {
+                println!("{:90} {:50}", quota.arn(), quota.name())
+            }
+        }
     }
 
     Ok(())
