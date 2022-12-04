@@ -19,7 +19,7 @@ Additionally, any breached quotas (whereby the utilization is greater than the t
 docker run robpickerill/service-quotas -h
 
 # help output
-docker run -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN robpickerill/service-quotas -h
+docker run robpickerill/service-quotas -h
 
 # display supported quotas for multiple regions
 docker run -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN robpickerill/service-quotas list-quotas -r eu-west-1 eu-west-2
