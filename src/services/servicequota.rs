@@ -49,7 +49,12 @@ pub struct Client {
 
 impl Client {
     pub async fn new(region: &str) -> Self {
-        let client = build_client(region).await;
+        let (config, retries) = util::aws_config_with_region(region).await;
+        let client_config = aws_sdk_servicequotas::config::Builder::from(&config)
+            .retry_config(retries)
+            .build();
+        let client = aws_sdk_servicequotas::Client::from_conf(client_config);
+
         let cloudwatch_client = cloudwatch::Client::new(region).await;
 
         Self {
@@ -112,12 +117,4 @@ impl Client {
 
         Ok(quotas)
     }
-}
-
-async fn build_client(region: &str) -> aws_sdk_servicequotas::Client {
-    let (config, retries) = util::aws_config_with_region(region).await;
-    let client_config = aws_sdk_servicequotas::config::Builder::from(&config)
-        .retry_config(retries)
-        .build();
-    aws_sdk_servicequotas::Client::from_conf(client_config)
 }
