@@ -34,24 +34,24 @@ impl Config {
 }
 
 fn regions(args: &clap::ArgMatches) -> Vec<String> {
-    if let Ok(regions) = args.clone().try_remove_many("regions") {
-        regions.unwrap().collect::<Vec<String>>()
+    if let Ok(Some(regions)) = args.clone().try_remove_many("regions") {
+        regions.collect::<Vec<String>>()
     } else {
         vec!["us-east-1".to_string()]
     }
 }
 
 fn threshold(args: &clap::ArgMatches) -> u8 {
-    if let Ok(threshold) = args.clone().try_remove_one::<u8>("threshold") {
-        threshold.unwrap()
+    if let Ok(Some(threshold)) = args.clone().try_remove_one::<u8>("threshold") {
+        threshold
     } else {
         75
     }
 }
 
 fn ignored_quotas(args: &clap::ArgMatches) -> HashSet<String> {
-    if let Ok(ignored_quotas) = args.clone().try_remove_many("ignore") {
-        ignored_quotas.unwrap().collect::<HashSet<String>>()
+    if let Ok(Some(ignored_quotas)) = args.clone().try_remove_many("ignore") {
+        ignored_quotas.collect::<HashSet<String>>()
     } else {
         HashSet::new()
     }
