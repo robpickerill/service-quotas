@@ -28,15 +28,15 @@ pub struct Quota {
 
 impl Quota {
     pub fn new(arn: &str, name: &str, utilization: Option<u8>) -> Result<Self, QuotaError> {
-        let (region, account_id, service_code, quota_code) = split_service_quota_arn(arn)?;
+        let parsed_arn = parse_arn(arn)?;
 
         Ok(Self {
             arn: arn.to_string(),
             name: name.to_string(),
-            account_id,
-            quota_code,
-            service_code,
-            region,
+            account_id: parsed_arn.account_id,
+            quota_code: parsed_arn.quota_code,
+            service_code: parsed_arn.service_code,
+            region: parsed_arn.region,
             utilization,
         })
     }
@@ -70,10 +70,19 @@ impl Quota {
     }
 }
 
+// a ParsedArn defines the individual components of an AWS Service Quota Arn
+#[derive(Debug, Clone)]
+struct ParsedArn {
+    region: String,
+    account_id: String,
+    service_code: String,
+    quota_code: String,
+}
+
 // split_arn splits a service quota ARN into the fields of interest, returning:
 // region, account, service code, quota code
 // An Arn is of the form: arn:${Partition}:servicequotas:${Region}:${Account}:${ServiceCode}/${QuotaCode}
-fn split_service_quota_arn(arn: &str) -> Result<(String, String, String, String), QuotaError> {
+fn parse_arn(arn: &str) -> Result<ParsedArn, QuotaError> {
     // splice the quota code from the end of the Arn
     let (arn_components, quota_code) = arn.split_once('/').ok_or_else(|| {
         QuotaError::ArnFormatError(format!("failed to parse quota code from arn: {}", arn))
@@ -90,10 +99,52 @@ fn split_service_quota_arn(arn: &str) -> Result<(String, String, String, String)
         )));
     }
 
-    Ok((
-        arn_components_vec[3].to_string(), // region
-        arn_components_vec[4].to_string(), // account
-        arn_components_vec[5].to_string(), // servicecode
-        quota_code.to_string(),
-    ))
+    Ok(ParsedArn {
+        region: arn_components_vec[3].to_string(),
+        account_id: arn_components_vec[4].to_string(),
+        service_code: arn_components_vec[5].to_string(),
+        quota_code: quota_code.to_string(),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_arn() {
+        let arns = vec![(
+            "arn:aws:servicequotas:us-east-1:123456789012:service/quota-1",
+            ParsedArn {
+                region: "us-east-1".to_string(),
+                account_id: "123456789012".to_string(),
+                service_code: "service".to_string(),
+                quota_code: "quota-1".to_string(),
+            },
+        )];
+
+        for arn in arns {
+            let parsed_arn = parse_arn(arn.0).unwrap();
+
+            assert_eq!(parsed_arn.region, arn.1.region);
+            assert_eq!(parsed_arn.account_id, arn.1.account_id);
+            assert_eq!(parsed_arn.service_code, arn.1.service_code);
+            assert_eq!(parsed_arn.quota_code, arn.1.quota_code);
+        }
+    }
+
+    #[test]
+    fn test_parse_arn_errors() {
+        let arns = vec![(
+            "",
+            "arn:aws:servicequotas:us-east-1:123456789012:service",
+            "service/quota-1",
+        )];
+
+        for arn in arns {
+            let parsed_arn = parse_arn(arn.0);
+
+            assert!(parsed_arn.is_err());
+        }
+    }
 }
