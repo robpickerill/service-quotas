@@ -6,7 +6,6 @@ mod quota;
 mod services;
 mod util;
 
-use async_mutex::Mutex;
 use quota::Quota;
 use services::servicequota;
 use std::{collections::HashSet, sync::Arc};
@@ -15,67 +14,56 @@ use tokio::sync::Semaphore;
 #[macro_use]
 extern crate log;
 
-pub async fn utilization(args: &clap::ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn utilization(
+    args: &clap::ArgMatches,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let config = config::Config::new(args);
     log_startup(&config);
 
     let mut handlers = Vec::new();
-    let all_quotas = Arc::new(Mutex::new(Vec::new()));
 
     for region in config.regions() {
         info!("checking for quotas in region {}", region);
 
         let client = servicequota::Client::new(region).await;
         let service_codes = client.service_codes().await?;
-        let permits = Arc::new(Semaphore::new(3));
+
+        let permits = Arc::new(Semaphore::new(4));
 
         for service_code in service_codes {
-            let region_ = region.clone();
-
             let permits = Arc::clone(&permits);
             let client_ = client.clone();
-            let all_quotas = Arc::clone(&all_quotas);
 
             let handler = tokio::spawn(async move {
-                let _permit = permits.acquire().await.unwrap();
-                let _all_quotas = all_quotas.clone();
-
-                debug!(
-                    "checking quotas region: {}, service: {}",
-                    region_, service_code
-                );
-
-                let quotas = client_.quotas(&service_code).await;
-
-                match quotas {
-                    Err(err) => error!("{} quota lookup failed:{}", service_code, err),
-                    Ok(results) => {
-                        for result in results {
-                            all_quotas.lock().await.push(result)
-                        }
-                    }
-                }
+                utilization_per_service(&client_, &service_code, permits).await
             });
             handlers.push(handler)
         }
     }
 
+    let mut all_quotas = Vec::new();
     for handler in handlers {
-        let result = handler.await;
-
-        if let Err(err) = result {
-            error!("error: {}", err)
-        }
+        let result = handler.await??;
+        all_quotas.extend(result);
     }
 
-    log_breached_quotas(Arc::clone(&all_quotas), &config).await;
+    log_breached_quotas(&all_quotas, &config).await;
 
     if let Some(pd_key) = lift_pagerduty_routing_key() {
         let pagerduty = notifiers::pagerduty::Client::new(&pd_key, config.threshold())?;
-        notify(pagerduty, all_quotas, config.ignored_quotas()).await;
+        notify(pagerduty, &all_quotas, config.ignored_quotas()).await;
     }
 
     Ok(())
+}
+
+async fn utilization_per_service(
+    client: &servicequota::Client,
+    service_code: &str,
+    permits: Arc<Semaphore>,
+) -> Result<Vec<Quota>, Box<dyn std::error::Error + Send + Sync>> {
+    let _permits = permits.acquire().await.unwrap();
+    client.quotas(service_code).await.map_err(|err| err.into())
 }
 
 pub async fn list_quotas(args: &clap::ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
@@ -103,10 +91,10 @@ fn lift_pagerduty_routing_key() -> Option<String> {
 
 async fn notify(
     notifier: impl notifiers::Notifier,
-    breached_quotas: Arc<Mutex<Vec<quota::Quota>>>,
+    breached_quotas: &Vec<quota::Quota>,
     ignored_quotas: &HashSet<String>,
 ) {
-    for quota in breached_quotas.lock().await.iter() {
+    for quota in breached_quotas {
         if ignored_quotas.contains(&quota.quota_code().to_string()) {
             info!(
                 "Ignoring quota {} as it is in the ignore list",
@@ -142,10 +130,10 @@ fn log_startup(config: &config::Config) {
     );
 }
 
-async fn log_breached_quotas(quotas: Arc<Mutex<Vec<Quota>>>, config: &config::Config) {
+async fn log_breached_quotas(quotas: &Vec<Quota>, config: &config::Config) {
     let mut count = 0;
 
-    for quota in quotas.lock().await.iter() {
+    for quota in quotas {
         if quota.utilization() > Some(config.threshold())
             && !config.ignored_quotas().contains(quota.quota_code())
         {
