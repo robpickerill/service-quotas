@@ -34,34 +34,97 @@ impl Config {
 }
 
 fn regions(args: &clap::ArgMatches) -> Vec<String> {
-    let regions = args
-        .try_get_many::<String>("regions")
-        .ok()
-        .flatten()
-        .unwrap_or_default()
-        .cloned()
-        .collect::<Vec<_>>();
-
-    if regions.is_empty() {
-        vec!["us-east-1".to_string()]
+    if let Ok(regions) = args.clone().try_remove_many("regions") {
+        regions.unwrap().collect::<Vec<String>>()
     } else {
-        regions
+        vec!["us-east-1".to_string()]
     }
 }
 
 fn threshold(args: &clap::ArgMatches) -> u8 {
-    args.try_get_one::<u8>("threshold")
-        .ok()
-        .flatten()
-        .unwrap_or(&75)
-        .to_owned()
+    if let Ok(threshold) = args.clone().try_remove_one::<u8>("threshold") {
+        threshold.unwrap()
+    } else {
+        75
+    }
 }
 
 fn ignored_quotas(args: &clap::ArgMatches) -> HashSet<String> {
-    args.try_get_many::<String>("ignore")
-        .ok()
-        .flatten()
-        .unwrap_or_default()
-        .cloned()
-        .collect::<HashSet<_>>()
+    if let Ok(ignored_quotas) = args.clone().try_remove_many("ignore") {
+        ignored_quotas.unwrap().collect::<HashSet<String>>()
+    } else {
+        HashSet::new()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::cli;
+
+    use super::*;
+
+    #[test]
+    fn test_region_default() {
+        let args = clap::ArgMatches::default();
+        let regions = regions(&args);
+        assert_eq!(regions, vec!["us-east-1".to_string()]);
+    }
+
+    #[test]
+    #[ignore = "TODO: fix this test"]
+    fn test_region_override() {
+        let args = cli::new().get_matches_from(vec![
+            "service-quotas",
+            "utilization",
+            "-r",
+            "us-east-1",
+            "us-east-2",
+            "us-west-1",
+            "us-west-2",
+        ]);
+        let regions = regions(&args);
+        assert_eq!(
+            regions,
+            vec![
+                "us-east-1".to_string(),
+                "us-east-2".to_string(),
+                "us-west-1".to_string(),
+                "us-west-2".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_threshold_default() {
+        let args = clap::ArgMatches::default();
+        let threshold = threshold(&args);
+        assert_eq!(threshold, 75);
+    }
+
+    #[test]
+    #[ignore = "TODO: fix this test"]
+    fn test_threshold_override() {
+        let args = cli::new().get_matches_from(vec!["service-quotas", "utilization", "-t", "50"]);
+        let threshold = threshold(&args);
+        assert_eq!(threshold, 50);
+    }
+
+    #[test]
+    fn test_ignored_quotas_default() {
+        let args = clap::ArgMatches::default();
+        let ignored_quotas = ignored_quotas(&args);
+        assert_eq!(ignored_quotas, HashSet::new());
+    }
+
+    #[test]
+    #[ignore = "TODO: fix this test"]
+    fn test_ignored_quotas_override() {
+        let args =
+            cli::new().get_matches_from(vec!["service-quotas", "utilization", "-i", "test1"]);
+        let ignored_quotas = ignored_quotas(&args);
+        assert_eq!(
+            ignored_quotas,
+            vec!["test1".to_string()].into_iter().collect()
+        );
+    }
 }
