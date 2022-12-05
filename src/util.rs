@@ -22,3 +22,22 @@ fn retry_config() -> RetryConfig {
         .with_retry_mode(RetryMode::Adaptive)
         .with_max_attempts(5)
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_aws_config_with_region() {
+        let (config, _) = aws_config_with_region("us-east-1").await;
+        assert_eq!(config.region().unwrap().as_ref(), "us-east-1");
+    }
+
+    #[test]
+    fn test_retry_config() {
+        let retry_config = retry_config();
+        assert_eq!(retry_config.initial_backoff(), Duration::new(2, 0));
+        assert_eq!(retry_config.mode(), RetryMode::Adaptive);
+        assert_eq!(retry_config.max_attempts(), 5);
+    }
+}
