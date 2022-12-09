@@ -68,7 +68,13 @@ async fn utilization_per_service(
     permits: Arc<Semaphore>,
 ) -> Result<Vec<Quota>, Box<dyn std::error::Error + Send + Sync>> {
     let _permits = permits.acquire().await.unwrap();
-    client.quotas(service_code).await.map_err(|err| err.into())
+    let quotas = client.quotas(service_code).await?;
+
+    for quota in quotas.clone() {
+        quota.utilization().await;
+    }
+
+    Ok(quotas)
 }
 
 pub async fn list_quotas(args: &clap::ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
