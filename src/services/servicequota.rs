@@ -1,3 +1,4 @@
+use crate::quota::CloudWatchQuotaDetails;
 use crate::util;
 use crate::{quota::Quota, quota::QuotaError, services::cloudwatch};
 
@@ -94,24 +95,35 @@ impl Client {
         for quota in all_quotas {
             let cw = self.cloudwatch_client.clone();
 
-            if let Some(metric_info) = quota.usage_metric() {
-                let query_input = cloudwatch::ServiceQuotaUtilizationQueryInput {
-                    namespace: metric_info.metric_namespace().unwrap().to_string(),
-                    metric_name: metric_info.metric_name().unwrap().to_string(),
-                    dimensions: metric_info.metric_dimensions().unwrap().clone(),
-                    statistic: metric_info
-                        .metric_statistic_recommendation()
-                        .unwrap()
-                        .to_string(),
-                };
+            // TODO: handle all the unwraps here
+            match quota.usage_metric() {
+                Some(metric_info) => {
+                    let query_input = cloudwatch::ServiceQuotaUtilizationQueryInput {
+                        namespace: metric_info.metric_namespace().unwrap().to_string(),
+                        metric_name: metric_info.metric_name().unwrap().to_string(),
+                        dimensions: metric_info.metric_dimensions().unwrap().clone(),
+                        statistic: metric_info
+                            .metric_statistic_recommendation()
+                            .unwrap()
+                            .to_string(),
+                    };
 
-                let utilization = cw.service_quota_utilization(&query_input).await.ok();
-
-                quotas.push(Quota::new(
-                    quota.quota_arn().unwrap(),
-                    quota.quota_name().unwrap(),
-                    utilization,
-                )?);
+                    quotas.push(Quota::new(
+                        quota.quota_arn().unwrap(),
+                        quota.quota_name().unwrap(),
+                        Some(CloudWatchQuotaDetails {
+                            client: cw,
+                            query: query_input,
+                        }),
+                    )?);
+                }
+                None => {
+                    quotas.push(Quota::new(
+                        quota.quota_arn().unwrap(),
+                        quota.quota_name().unwrap(),
+                        None,
+                    )?);
+                }
             }
         }
 

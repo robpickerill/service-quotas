@@ -6,7 +6,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use crate::notifiers::Notifier;
-use crate::quota::Quota;
+use crate::quota::{Quota, Utilization};
 
 #[derive(Debug)]
 pub enum ClientError {
@@ -122,10 +122,10 @@ impl Notifier for Client {
     #[allow(clippy::redundant_field_names)]
     async fn notify(&self, quota: &Quota) -> Result<(), Self::Error> {
         let url = "https://events.pagerduty.com/v2/enqueue";
-        let trigger_action = self.trigger_action(quota.utilization());
+        let trigger_action = self.trigger_action(quota.utilization().await);
         let dedup_key = self.dedup_key(quota);
 
-        let Some(utilization) = quota.utilization() else {
+        let Some(utilization) = quota.utilization().await else {
             return Ok(());
         };
 

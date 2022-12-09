@@ -6,6 +6,8 @@ mod quota;
 mod services;
 mod util;
 
+use quota::Utilization;
+
 use quota::Quota;
 use services::servicequota;
 use std::{collections::HashSet, sync::Arc};
@@ -28,7 +30,7 @@ pub async fn utilization(
         let client = servicequota::Client::new(region).await;
         let service_codes = client.service_codes().await?;
 
-        let permits = Arc::new(Semaphore::new(4));
+        let permits = Arc::new(Semaphore::new(3));
 
         for service_code in service_codes {
             let permits = Arc::clone(&permits);
@@ -43,8 +45,11 @@ pub async fn utilization(
 
     let mut all_quotas = Vec::new();
     for handler in handlers {
-        let result = handler.await??;
-        all_quotas.extend(result);
+        match handler.await {
+            Ok(Ok(quotas)) => all_quotas.extend(quotas),
+            Ok(Err(e)) => error!("error: {}", e),
+            Err(e) => error!("error while checking quotas: {}", e),
+        }
     }
 
     log_breached_quotas(&all_quotas, &config).await;
@@ -134,7 +139,7 @@ async fn log_breached_quotas(quotas: &Vec<Quota>, config: &config::Config) {
     let mut count = 0;
 
     for quota in quotas {
-        if quota.utilization() > Some(config.threshold())
+        if quota.utilization().await > Some(config.threshold())
             && !config.ignored_quotas().contains(quota.quota_code())
         {
             info!(
@@ -143,7 +148,7 @@ async fn log_breached_quotas(quotas: &Vec<Quota>, config: &config::Config) {
                 quota.service_code(),
                 quota.quota_code(),
                 quota.name(),
-                quota.utilization().unwrap()
+                quota.utilization().await.unwrap()
             );
 
             count += 1;

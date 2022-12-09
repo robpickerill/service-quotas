@@ -1,5 +1,10 @@
+use async_trait::async_trait;
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+use crate::services::cloudwatch::{Client, ServiceQuotaUtilizationQueryInput};
 
 #[derive(Debug)]
 pub enum QuotaError {
@@ -17,56 +22,102 @@ impl Display for QuotaError {
 
 #[derive(Debug, Clone)]
 pub struct Quota {
+    quota_details: QuotaDetails,
+    cloudwatch: Option<CloudWatchQuotaDetails>,
+    utilization: Arc<RwLock<Option<u8>>>,
+}
+
+#[derive(Debug, Clone)]
+struct QuotaDetails {
     arn: String,
     account_id: String,
     name: String,
     quota_code: String,
     service_code: String,
     region: String,
-    utilization: Option<u8>,
 }
 
+#[derive(Debug, Clone)]
+pub struct CloudWatchQuotaDetails {
+    pub client: Client,
+    pub query: ServiceQuotaUtilizationQueryInput,
+}
+
+#[allow(clippy::redundant_field_names)]
 impl Quota {
-    pub fn new(arn: &str, name: &str, utilization: Option<u8>) -> Result<Self, QuotaError> {
+    pub fn new(
+        arn: &str,
+        name: &str,
+        cloudwatch: Option<CloudWatchQuotaDetails>,
+    ) -> Result<Self, QuotaError> {
         let parsed_arn = parse_arn(arn)?;
 
         Ok(Self {
-            arn: arn.to_string(),
-            name: name.to_string(),
-            account_id: parsed_arn.account_id,
-            quota_code: parsed_arn.quota_code,
-            service_code: parsed_arn.service_code,
-            region: parsed_arn.region,
-            utilization,
+            quota_details: QuotaDetails {
+                arn: arn.to_string(),
+                name: name.to_string(),
+                account_id: parsed_arn.account_id,
+                quota_code: parsed_arn.quota_code,
+                service_code: parsed_arn.service_code,
+                region: parsed_arn.region,
+            },
+            cloudwatch: cloudwatch,
+            utilization: Arc::new(RwLock::new(None)),
         })
     }
 
     pub fn name(&self) -> &str {
-        &self.name
+        &self.quota_details.name
     }
 
     pub fn arn(&self) -> &str {
-        &self.arn
+        &self.quota_details.arn
     }
 
     pub fn account_id(&self) -> &str {
-        &self.account_id
+        &self.quota_details.account_id
     }
 
     pub fn quota_code(&self) -> &str {
-        &self.quota_code
+        &self.quota_details.quota_code
     }
 
     pub fn service_code(&self) -> &str {
-        &self.service_code
+        &self.quota_details.service_code
     }
 
     pub fn region(&self) -> &str {
-        &self.region
+        &self.quota_details.region
     }
+}
 
-    pub fn utilization(&self) -> Option<u8> {
-        self.utilization
+#[async_trait]
+pub trait Utilization {
+    async fn utilization(&self) -> Option<u8>;
+}
+
+#[async_trait]
+impl Utilization for Quota {
+    async fn utilization(&self) -> Option<u8> {
+        if let Some(utilization) = *self.utilization.read().await {
+            return Some(utilization);
+        }
+
+        if let Some(cloudwatch) = self.cloudwatch.clone() {
+            let utilization = cloudwatch
+                .client
+                .service_quota_utilization(&cloudwatch.query)
+                .await
+                .ok();
+
+            if let Some(utilization) = utilization {
+                *self.utilization.write().await = Some(utilization);
+            }
+
+            utilization
+        } else {
+            None
+        }
     }
 }
 
