@@ -89,6 +89,10 @@ impl Quota {
     pub fn region(&self) -> &str {
         &self.quota_details.region
     }
+
+    pub fn enabled(&self) -> bool {
+        self.cloudwatch.is_some()
+    }
 }
 
 #[async_trait]

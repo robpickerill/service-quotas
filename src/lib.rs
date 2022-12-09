@@ -88,7 +88,9 @@ pub async fn list_quotas(args: &clap::ArgMatches) -> Result<(), Box<dyn std::err
             let quotas = client.quotas(&service_code).await?;
 
             for quota in quotas {
-                println!("{:90} {:50}", quota.arn(), quota.name())
+                if quota.enabled() {
+                    println!("{:90} {:50}", quota.arn(), quota.name())
+                }
             }
         }
     }
