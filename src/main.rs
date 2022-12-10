@@ -32,10 +32,10 @@ async fn main() {
 
     let result = match args.subcommand() {
         None => Err(CliError::UnknownSubcommand),
-        Some(("utilization", args)) => service_quotas::utilization(args)
+        Some(("utilization", args)) => service_quotas::utilization()
             .await
             .map_err(|e| CliError::Runtime(e.to_string())),
-        Some(("list-quotas", args)) => service_quotas::list_quotas(args)
+        Some(("list-quotas", args)) => service_quotas::list_quotas()
             .await
             .map_err(|e| CliError::Runtime(e.to_string())),
         _ => Err(CliError::UnknownSubcommand),

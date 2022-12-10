@@ -1,3 +1,5 @@
+pub mod lambda;
+
 use async_trait::async_trait;
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FmtResult};
@@ -6,22 +8,8 @@ use tokio::sync::RwLock;
 
 use crate::services::cloudwatch::{Client, ServiceQuotaUtilizationQueryInput};
 
-#[derive(Debug)]
-pub enum QuotaError {
-    ArnFormatError(String),
-}
-
-impl Error for QuotaError {}
-impl Display for QuotaError {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            Self::ArnFormatError(e) => write!(f, "ArnFormatError: {}", e),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
-pub struct Quota {
+pub struct QuotaCloudWatch {
     quota_details: QuotaDetails,
     cloudwatch: Option<CloudWatchQuotaDetails>,
     utilization: Arc<RwLock<Option<u8>>>,
@@ -44,7 +32,7 @@ pub struct CloudWatchQuotaDetails {
 }
 
 #[allow(clippy::redundant_field_names)]
-impl Quota {
+impl QuotaCloudWatch {
     pub fn new(
         arn: &str,
         name: &str,
@@ -95,13 +83,44 @@ impl Quota {
     }
 }
 
+// Quota provides a common interface for all quotas.
 #[async_trait]
-pub trait Utilization {
+pub trait Quota: Send + Sync {
+    async fn name(&self) -> &str;
+    async fn arn(&self) -> &str;
+    async fn account_id(&self) -> &str;
+    async fn quota_code(&self) -> &str;
+    async fn service_code(&self) -> &str;
+    async fn region(&self) -> &str;
     async fn utilization(&self) -> Option<u8>;
 }
 
 #[async_trait]
-impl Utilization for Quota {
+impl Quota for QuotaCloudWatch {
+    async fn name(&self) -> &str {
+        &self.quota_details.name
+    }
+
+    async fn arn(&self) -> &str {
+        &self.quota_details.arn
+    }
+
+    async fn account_id(&self) -> &str {
+        &self.quota_details.account_id
+    }
+
+    async fn quota_code(&self) -> &str {
+        &self.quota_details.quota_code
+    }
+
+    async fn service_code(&self) -> &str {
+        &self.quota_details.service_code
+    }
+
+    async fn region(&self) -> &str {
+        &self.quota_details.region
+    }
+
     async fn utilization(&self) -> Option<u8> {
         if let Some(utilization) = *self.utilization.read().await {
             return Some(utilization);
@@ -121,6 +140,20 @@ impl Utilization for Quota {
             utilization
         } else {
             None
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum QuotaError {
+    ArnFormatError(String),
+}
+
+impl Error for QuotaError {}
+impl Display for QuotaError {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            Self::ArnFormatError(e) => write!(f, "ArnFormatError: {}", e),
         }
     }
 }

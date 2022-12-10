@@ -1,4 +1,5 @@
-use crate::quota::CloudWatchQuotaDetails;
+use crate::quota::lambda::QuotaL2ACBD22F;
+use crate::quota::{CloudWatchQuotaDetails, QuotaCloudWatch};
 use crate::util;
 use crate::{quota::Quota, quota::QuotaError, services::cloudwatch};
 
@@ -80,7 +81,10 @@ impl Client {
             .collect::<Vec<_>>())
     }
 
-    pub async fn quotas(&self, service_code: &str) -> Result<Vec<Quota>, ServiceQuotaError> {
+    pub async fn quotas(
+        &self,
+        service_code: &str,
+    ) -> Result<Vec<Box<dyn Quota>>, ServiceQuotaError> {
         let paginator = self
             .client
             .list_service_quotas()
@@ -91,42 +95,52 @@ impl Client {
 
         let all_quotas = paginator.collect::<Result<Vec<_>, _>>().await?;
 
-        let mut quotas: Vec<Quota> = Vec::new();
+        let mut quotas: Vec<Box<dyn Quota>> = Vec::new();
         for quota in all_quotas {
             let cw = self.cloudwatch_client.clone();
 
-            // TODO: handle all the unwraps here
-            match quota.usage_metric() {
-                Some(metric_info) => {
-                    let query_input = cloudwatch::ServiceQuotaUtilizationQueryInput {
-                        namespace: metric_info.metric_namespace().unwrap().to_string(),
-                        metric_name: metric_info.metric_name().unwrap().to_string(),
-                        dimensions: metric_info.metric_dimensions().unwrap().clone(),
-                        statistic: metric_info
-                            .metric_statistic_recommendation()
-                            .unwrap()
-                            .to_string(),
-                    };
+            if let Some(usage_metric) = quota.usage_metric() {
+                let query_input = cloudwatch::ServiceQuotaUtilizationQueryInput {
+                    namespace: usage_metric.metric_namespace().unwrap().to_string(),
+                    metric_name: usage_metric.metric_name().unwrap().to_string(),
+                    dimensions: usage_metric.metric_dimensions().unwrap().clone(),
+                    statistic: usage_metric
+                        .metric_statistic_recommendation()
+                        .unwrap()
+                        .to_string(),
+                };
 
-                    quotas.push(Quota::new(
-                        quota.quota_arn().unwrap(),
-                        quota.quota_name().unwrap(),
-                        Some(CloudWatchQuotaDetails {
-                            client: cw,
-                            query: query_input,
-                        }),
-                    )?);
-                }
-                None => {
-                    quotas.push(Quota::new(
-                        quota.quota_arn().unwrap(),
-                        quota.quota_name().unwrap(),
-                        None,
-                    )?);
+                let new_quota = QuotaCloudWatch::new(
+                    quota.quota_arn().unwrap(),
+                    quota.quota_name().unwrap(),
+                    Some(CloudWatchQuotaDetails {
+                        client: cw,
+                        query: query_input,
+                    }),
+                )?;
+
+                quotas.push(Box::new(new_quota));
+                continue;
+            } else {
+                let quota_code = quota.quota_code().unwrap();
+                let arn = quota.quota_arn().unwrap();
+                let name = quota.quota_name().unwrap();
+
+                if let Some(quota_result) = lookup_quota(quota_code, arn, name).await {
+                    quotas.push(quota_result);
                 }
             }
         }
 
         Ok(quotas)
+    }
+}
+
+// lookup_quota provides a lookup table for Quotas that are not supported by the CloudWatch API,
+// i.e. manually implemented quotas.
+async fn lookup_quota(quota_code: &str, arn: &str, name: &str) -> Option<Box<dyn Quota>> {
+    match quota_code {
+        "L-2ACBD22F" => Some(Box::new(QuotaL2ACBD22F::new(arn, name).await.unwrap())),
+        _ => None,
     }
 }
