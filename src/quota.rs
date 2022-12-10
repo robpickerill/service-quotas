@@ -53,34 +53,6 @@ impl QuotaCloudWatch {
             utilization: Arc::new(RwLock::new(None)),
         })
     }
-
-    pub fn name(&self) -> &str {
-        &self.quota_details.name
-    }
-
-    pub fn arn(&self) -> &str {
-        &self.quota_details.arn
-    }
-
-    pub fn account_id(&self) -> &str {
-        &self.quota_details.account_id
-    }
-
-    pub fn quota_code(&self) -> &str {
-        &self.quota_details.quota_code
-    }
-
-    pub fn service_code(&self) -> &str {
-        &self.quota_details.service_code
-    }
-
-    pub fn region(&self) -> &str {
-        &self.quota_details.region
-    }
-
-    pub fn enabled(&self) -> bool {
-        self.cloudwatch.is_some()
-    }
 }
 
 // Quota provides a common interface for all quotas.

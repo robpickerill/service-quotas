@@ -46,89 +46,10 @@ pub async fn list_quotas() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn utilization_per_service(
-    client: &servicequota::Client,
-    service_code: &str,
-    permits: Arc<Semaphore>,
-) -> Result<Vec<Quota>, Box<dyn std::error::Error + Send + Sync>> {
-    let _permits = permits.acquire().await.unwrap();
-    let quotas = client.quotas(service_code).await?;
-
-    for quota in quotas.clone() {
-        quota.utilization().await;
-    }
-
-    Ok(quotas)
-}
-
-pub async fn list_quotas(args: &clap::ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
-    let config = config::Config::new(args);
-
-    for region in config.regions() {
-        let client = servicequota::Client::new(region).await;
-        let service_codes = client.service_codes().await?;
-
-        for service_code in service_codes {
-            let quotas = client.quotas(&service_code).await?;
-
-            for quota in quotas {
-                if quota.enabled() {
-                    println!("{:90} {:50}", quota.arn(), quota.name())
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn lift_pagerduty_routing_key() -> Option<String> {
-    std::env::var("PAGERDUTY_ROUTING_KEY").ok()
-}
-
-async fn notify(
-    notifier: impl notifiers::Notifier,
-    breached_quotas: &Vec<quota::Quota>,
-    ignored_quotas: &HashSet<String>,
-) {
-    for quota in breached_quotas {
-        if ignored_quotas.contains(&quota.quota_code().to_string()) {
-            info!(
-                "Ignoring quota {} as it is in the ignore list",
-                quota.quota_code()
-            );
-            continue;
-        }
-
-        let result = notifier.notify(quota).await;
-
-        if let Err(err) = result {
-            println!("pagerduty error: {}", err)
-        }
-    }
-}
-
-fn log_startup(config: &config::Config) {
-    info!(
-        "Starting up: {} {}",
-        env!("CARGO_PKG_NAME"),
-        env!("CARGO_PKG_VERSION")
-    );
-    info!("Region: {}", config.regions().join(", "));
-    info!("Threshold: {}", config.threshold());
-    info!(
-        "Ignored quotas: {}",
-        config
-            .ignored_quotas()
-            .iter()
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-}
-
-async fn log_breached_quotas(quotas: &Vec<Quota>, config: &config::Config) {
-    let mut count = 0;
+async fn print_list_quotas_table(quotas: Vec<Box<dyn Quota>>) {
+    let mut table = Table::new();
+    table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
+    table.set_titles(Row::new(vec![Cell::new("Arn"), Cell::new("Name")]));
 
     for quota in quotas {
         table.add_row(Row::new(vec![
