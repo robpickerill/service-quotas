@@ -54,6 +54,7 @@ impl Client {
 
 pub struct LB99A9384 {
     client: Client,
+    utilization: Arc<RwLock<Option<u8>>>,
 }
 
 impl LB99A9384 {
@@ -69,10 +70,22 @@ impl Utilization for LB99A9384 {
     type Error = LambdaError;
 
     async fn utilization(&self) -> Result<u8, Self::Error> {
-        let account_settings = self.client.get_account_settings().await?;
-        let code_size_limit_bytes = account_settings.account_limit().unwrap().total_code_size();
-        let code_size_used_bytes = account_settings.account_usage().unwrap().total_code_size();
+        if let Some(utilization) = *self.utilization.read().await {
+            return Ok(utilization);
+        }
 
-        Ok((code_size_used_bytes / code_size_limit_bytes * 100) as u8)
+        let account_settings = self.client.get_account_settings().await?;
+
+        if let (Some(limit), Some(usage)) = (
+            account_settings.account_limit(),
+            account_settings.account_usage(),
+        ) {
+            let utilization = (usage.total_code_size() / limit.total_code_size() * 100) as u8;
+            *self.utilization.write().await = Some(utilization);
+
+            Ok(utilization)
+        } else {
+            None
+        }
     }
 }

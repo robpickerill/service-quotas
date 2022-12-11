@@ -89,11 +89,20 @@ pub async fn utilization(args: &ArgMatches) -> Result<(), Box<dyn std::error::Er
                 .into_iter()
                 .map(|s| {
                     let client_ = client.clone();
+                    let threshold_ = *threshold;
                     let permits = Arc::clone(&permits);
                     tokio::spawn(async move {
                         let _permits = permits.acquire().await.unwrap();
                         match client_.quotas(&s).await {
-                            Ok(quotas) => Ok(quotas),
+                            Ok(quotas) => {
+                                let mut breached = vec![];
+                                for quota in quotas {
+                                    if quota.utilization().await > Some(threshold_) {
+                                        breached.push(quota);
+                                    }
+                                }
+                                Ok(breached)
+                            }
                             Err(err) => Err(err),
                         }
                     })
@@ -109,9 +118,7 @@ pub async fn utilization(args: &ArgMatches) -> Result<(), Box<dyn std::error::Er
                 Ok(quotas_) => match quotas_ {
                     Ok(quotas_) => {
                         for q in quotas_ {
-                            if q.utilization().await > Some(*threshold) {
-                                breached_quotas.push(q);
-                            }
+                            breached_quotas.push(q);
                         }
                     }
 
