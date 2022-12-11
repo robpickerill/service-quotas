@@ -1,6 +1,5 @@
 pub mod cli;
 
-mod config;
 mod quota;
 mod services;
 mod util;
@@ -8,40 +7,54 @@ mod util;
 #[macro_use]
 extern crate prettytable;
 
+use clap::ArgMatches;
 use prettytable::{format, Cell, Row, Table};
 use quota::Quota;
 use services::servicequota;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
-pub async fn list_quotas() -> Result<(), Box<dyn std::error::Error>> {
-    let client = servicequota::Client::new("us-east-1").await;
-    let service_codes = client.service_codes().await.unwrap();
+pub async fn list_quotas(args: &ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
+    let regions = args.get_many::<String>("regions").unwrap();
 
-    // using a semaphore here to avoid rate limiting from the AWS APIs
-    let permits = Arc::new(Semaphore::new(3));
+    let tasks = regions
+        .map(|r| async {
+            let client = servicequota::Client::new(r).await;
+            let service_codes = client.service_codes().await.unwrap();
 
-    let tasks = service_codes
-        .into_iter()
-        .map(|s| {
-            let client_ = client.clone();
-            let permits = Arc::clone(&permits);
-            tokio::spawn(async move {
-                let _permits = permits.acquire().await.unwrap();
-                client_.quotas(&s).await.unwrap()
-            })
+            let permits = Arc::new(Semaphore::new(2));
+
+            service_codes
+                .into_iter()
+                .map(|s| {
+                    let client_ = client.clone();
+                    let permits = Arc::clone(&permits);
+                    tokio::spawn(async move {
+                        let _permits = permits.acquire().await.unwrap();
+                        match client_.quotas(&s).await {
+                            Ok(quotas) => Ok(quotas),
+                            Err(err) => Err(err),
+                        }
+                    })
+                })
+                .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
 
-    let mut quotas = Vec::new();
+    let mut all_quotas = Vec::new();
     for task in tasks {
-        match task.await {
-            Ok(quotas_) => quotas.extend(quotas_),
-            Err(err) => println!("error: {}", err),
+        for quotas in task.await {
+            match quotas.await {
+                Ok(quotas_) => match quotas_ {
+                    Ok(quotas_) => all_quotas.extend(quotas_),
+                    Err(err) => println!("error: {}", err),
+                },
+                Err(err) => println!("error: {}", err),
+            }
         }
     }
 
-    print_list_quotas_table(quotas).await;
+    print_list_quotas_table(all_quotas).await;
 
     Ok(())
 }
@@ -61,38 +74,51 @@ async fn print_list_quotas_table(quotas: Vec<Box<dyn Quota>>) {
     table.printstd();
 }
 
-pub async fn utilization() -> Result<(), Box<dyn std::error::Error>> {
-    let client = servicequota::Client::new("us-east-1").await;
-    let service_codes = client.service_codes().await.unwrap();
+pub async fn utilization(args: &ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
+    let regions = args.get_many::<String>("regions").unwrap();
+    let threshold = args.get_one::<u8>("threshold").unwrap();
 
-    // using a semaphore here to avoid rate limiting from the AWS APIs
-    let permits = Arc::new(Semaphore::new(3));
+    let tasks = regions
+        .map(|r| async {
+            let client = servicequota::Client::new(r).await;
+            let service_codes = client.service_codes().await.unwrap();
 
-    let tasks = service_codes
-        .into_iter()
-        .map(|s| {
-            let client_ = client.clone();
-            let permits = Arc::clone(&permits);
-            tokio::spawn(async move {
-                let _permits = permits.acquire().await.unwrap();
-                client_.quotas(&s).await.unwrap()
-            })
+            let permits = Arc::new(Semaphore::new(2));
+
+            service_codes
+                .into_iter()
+                .map(|s| {
+                    let client_ = client.clone();
+                    let permits = Arc::clone(&permits);
+                    tokio::spawn(async move {
+                        let _permits = permits.acquire().await.unwrap();
+                        match client_.quotas(&s).await {
+                            Ok(quotas) => Ok(quotas),
+                            Err(err) => Err(err),
+                        }
+                    })
+                })
+                .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
 
     let mut breached_quotas = Vec::new();
     for task in tasks {
-        match task.await {
-            Ok(quotas_) => {
-                for quota in quotas_ {
-                    if let Some(utilization) = quota.utilization().await {
-                        if utilization >= 75 {
-                            breached_quotas.push(quota);
+        for quotas in task.await {
+            match quotas.await {
+                Ok(quotas_) => match quotas_ {
+                    Ok(quotas_) => {
+                        for q in quotas_ {
+                            if q.utilization().await > Some(*threshold) {
+                                breached_quotas.push(q);
+                            }
                         }
                     }
-                }
+
+                    Err(err) => println!("error: {}", err),
+                },
+                Err(err) => println!("error: {}", err),
             }
-            Err(err) => println!("error: {}", err),
         }
     }
 
