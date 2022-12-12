@@ -1,5 +1,8 @@
+use crate::quotas::{
+    lambda::QuotaL2ACBD22F, CloudWatchQuotaDetails, Quota, QuotaCloudWatch, QuotaError,
+};
+use crate::services::cloudwatch;
 use crate::util;
-use crate::{quota::Quota, quota::QuotaError, services::cloudwatch};
 
 use aws_sdk_cloudwatch::types::SdkError;
 use aws_sdk_servicequotas::error::{ListServiceQuotasError, ListServicesError};
@@ -10,8 +13,8 @@ use tokio_stream::StreamExt;
 #[derive(Debug)]
 pub enum ServiceQuotaError {
     QuotaError(QuotaError),
-    AwsSdkErrorListServiceQuotas(SdkError<ListServiceQuotasError>),
-    AwsSdkErrorListServices(SdkError<ListServicesError>),
+    AwsServiceQuotasSdkErrorListServiceQuotas(SdkError<ListServiceQuotasError>),
+    AwsServiceQuotasSdkErrorListServices(SdkError<ListServicesError>),
 }
 
 impl Error for ServiceQuotaError {}
@@ -19,8 +22,12 @@ impl Display for ServiceQuotaError {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
             Self::QuotaError(e) => write!(f, "QuotaError: {}", e),
-            Self::AwsSdkErrorListServiceQuotas(e) => write!(f, "AwsSdkError: {}", e),
-            Self::AwsSdkErrorListServices(e) => write!(f, "AwsSdkError: {}", e),
+            Self::AwsServiceQuotasSdkErrorListServiceQuotas(e) => {
+                write!(f, "AwsServiceQuotasSdkErrorListServiceQuotas: {}", e)
+            }
+            Self::AwsServiceQuotasSdkErrorListServices(e) => {
+                write!(f, "AwsServiceQuotasSdkErrorListServices: {}", e)
+            }
         }
     }
 }
@@ -32,12 +39,12 @@ impl From<QuotaError> for ServiceQuotaError {
 }
 impl From<SdkError<ListServiceQuotasError>> for ServiceQuotaError {
     fn from(err: SdkError<ListServiceQuotasError>) -> Self {
-        Self::AwsSdkErrorListServiceQuotas(err)
+        Self::AwsServiceQuotasSdkErrorListServiceQuotas(err)
     }
 }
 impl From<SdkError<ListServicesError>> for ServiceQuotaError {
     fn from(err: SdkError<ListServicesError>) -> Self {
-        Self::AwsSdkErrorListServices(err)
+        Self::AwsServiceQuotasSdkErrorListServices(err)
     }
 }
 
@@ -79,7 +86,10 @@ impl Client {
             .collect::<Vec<_>>())
     }
 
-    pub async fn quotas(&self, service_code: &str) -> Result<Vec<Quota>, ServiceQuotaError> {
+    pub async fn quotas(
+        &self,
+        service_code: &str,
+    ) -> Result<Vec<Box<dyn Quota>>, ServiceQuotaError> {
         let paginator = self
             .client
             .list_service_quotas()
@@ -90,31 +100,52 @@ impl Client {
 
         let all_quotas = paginator.collect::<Result<Vec<_>, _>>().await?;
 
-        let mut quotas: Vec<Quota> = Vec::new();
+        let mut quotas: Vec<Box<dyn Quota>> = Vec::new();
         for quota in all_quotas {
             let cw = self.cloudwatch_client.clone();
 
-            if let Some(metric_info) = quota.usage_metric() {
+            if let Some(usage_metric) = quota.usage_metric() {
                 let query_input = cloudwatch::ServiceQuotaUtilizationQueryInput {
-                    namespace: metric_info.metric_namespace().unwrap().to_string(),
-                    metric_name: metric_info.metric_name().unwrap().to_string(),
-                    dimensions: metric_info.metric_dimensions().unwrap().clone(),
-                    statistic: metric_info
+                    namespace: usage_metric.metric_namespace().unwrap().to_string(),
+                    metric_name: usage_metric.metric_name().unwrap().to_string(),
+                    dimensions: usage_metric.metric_dimensions().unwrap().clone(),
+                    statistic: usage_metric
                         .metric_statistic_recommendation()
                         .unwrap()
                         .to_string(),
                 };
 
-                let utilization = cw.service_quota_utilization(&query_input).await.ok();
-
-                quotas.push(Quota::new(
+                let new_quota = QuotaCloudWatch::new(
                     quota.quota_arn().unwrap(),
                     quota.quota_name().unwrap(),
-                    utilization,
-                )?);
+                    Some(CloudWatchQuotaDetails {
+                        client: cw,
+                        query: query_input,
+                    }),
+                )?;
+
+                quotas.push(Box::new(new_quota));
+                continue;
+            } else {
+                let quota_code = quota.quota_code().unwrap();
+                let arn = quota.quota_arn().unwrap();
+                let name = quota.quota_name().unwrap();
+
+                if let Some(quota_result) = lookup_quota(quota_code, arn, name).await {
+                    quotas.push(quota_result);
+                }
             }
         }
 
         Ok(quotas)
+    }
+}
+
+// lookup_quota provides a lookup table for Quotas that are not supported by the CloudWatch API,
+// i.e. manually implemented quotas.
+async fn lookup_quota(quota_code: &str, arn: &str, name: &str) -> Option<Box<dyn Quota>> {
+    match quota_code {
+        "L-2ACBD22F" => Some(Box::new(QuotaL2ACBD22F::new(arn, name).await.unwrap())),
+        _ => None,
     }
 }

@@ -1,34 +1,102 @@
 pub mod cli;
 
-mod config;
 mod notifiers;
-mod quota;
+mod quotas;
 mod services;
 mod util;
 
-use quota::Quota;
+#[macro_use]
+extern crate prettytable;
+
+use clap::ArgMatches;
+use notifiers::Notify;
+use prettytable::{format, Cell, Row, Table};
+use quotas::Quota;
 use services::servicequota;
-use std::{collections::HashSet, sync::Arc};
+use std::{error::Error, sync::Arc};
 use tokio::sync::Semaphore;
 
-#[macro_use]
-extern crate log;
+pub async fn list_quotas(args: &ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
+    let regions = args.get_many::<String>("regions").unwrap();
 
-pub async fn utilization(
-    args: &clap::ArgMatches,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let config = config::Config::new(args);
-    log_startup(&config);
-
+    // TODO: Move this complexity into the servicequota module
     let mut handlers = Vec::new();
-
-    for region in config.regions() {
-        info!("checking for quotas in region {}", region);
+    for region in regions {
+        println!("checking for quotas in region {}", region);
 
         let client = servicequota::Client::new(region).await;
         let service_codes = client.service_codes().await?;
 
-        let permits = Arc::new(Semaphore::new(4));
+        let permits = new_permits().await;
+
+        for service_code in service_codes {
+            let client_ = client.clone();
+            let permits = Arc::clone(&permits);
+
+            handlers.push(tokio::spawn(async move {
+                let _permits = permits.acquire().await.unwrap();
+                client_.quotas(&service_code).await
+            }));
+        }
+    }
+
+    let mut all_quotas = Vec::new();
+    for handler in handlers {
+        match handler.await {
+            Ok(result) => match result {
+                Ok(quotas) => all_quotas.extend(quotas),
+                Err(err) => println!("error: {}", err),
+            },
+            Err(err) => println!("error: {}", err),
+        };
+    }
+
+    print_list_quotas_table(all_quotas).await;
+
+    Ok(())
+}
+
+// new_permits returns a new semaphore.
+// 3 concurrent requests to the AWS APIs feels like a good number to avoid getting
+// rate limited.
+// TODO: Make this configurable
+async fn new_permits() -> Arc<Semaphore> {
+    Arc::new(Semaphore::new(3))
+}
+
+async fn print_list_quotas_table(quotas: Vec<Box<dyn Quota>>) {
+    let mut table = Table::new();
+    table.set_titles(Row::new(vec![Cell::new("Arn"), Cell::new("Name")]));
+
+    for quota in quotas {
+        table.add_row(Row::new(vec![
+            Cell::new(quota.arn().await),
+            Cell::new(quota.name().await),
+        ]));
+    }
+
+    table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
+    table.printstd();
+}
+
+pub async fn utilization(args: &ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
+    let regions = args.get_many::<String>("regions").unwrap();
+    let threshold = args.get_one::<u8>("threshold").unwrap();
+    let ignored_quotas = match args.try_get_many::<String>("ignore") {
+        Ok(Some(ignored_quotas)) => Some(ignored_quotas.map(|r| r.to_string()).collect::<Vec<_>>()),
+        _ => None,
+    };
+
+    let mut handlers = Vec::new();
+
+    // TODO: Move this complexity into the servicequota module
+    for region in regions {
+        println!("checking for quotas in region {}", region);
+
+        let client = servicequota::Client::new(region).await;
+        let service_codes = client.service_codes().await?;
+
+        let permits = new_permits().await;
 
         for service_code in service_codes {
             let permits = Arc::clone(&permits);
@@ -43,16 +111,16 @@ pub async fn utilization(
 
     let mut all_quotas = Vec::new();
     for handler in handlers {
-        let result = handler.await??;
-        all_quotas.extend(result);
+        let result = handler.await?;
+
+        match result {
+            Ok(quotas) => all_quotas.extend(quotas),
+            Err(err) => println!("error: {}", err),
+        }
     }
 
-    log_breached_quotas(&all_quotas, &config).await;
-
-    if let Some(pd_key) = lift_pagerduty_routing_key() {
-        let pagerduty = notifiers::pagerduty::Client::new(&pd_key, config.threshold())?;
-        notify(pagerduty, &all_quotas, config.ignored_quotas()).await;
-    }
+    print_breached_quotas_table(&all_quotas, threshold).await;
+    notify_breached_quotas(&all_quotas, threshold, ignored_quotas.as_deref()).await?;
 
     Ok(())
 }
@@ -61,96 +129,50 @@ async fn utilization_per_service(
     client: &servicequota::Client,
     service_code: &str,
     permits: Arc<Semaphore>,
-) -> Result<Vec<Quota>, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Vec<Box<dyn Quota>>, Box<dyn Error + Sync + Send>> {
     let _permits = permits.acquire().await.unwrap();
-    client.quotas(service_code).await.map_err(|err| err.into())
-}
+    let quotas = client.quotas(service_code).await;
 
-pub async fn list_quotas(args: &clap::ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
-    let config = config::Config::new(args);
-
-    for region in config.regions() {
-        let client = servicequota::Client::new(region).await;
-        let service_codes = client.service_codes().await?;
-
-        for service_code in service_codes {
-            let quotas = client.quotas(&service_code).await?;
-
-            for quota in quotas {
-                println!("{:90} {:50}", quota.arn(), quota.name())
+    match quotas {
+        Ok(quotas) => {
+            // TODO: This is a hack to get utilization in parallel
+            for quota in &quotas {
+                quota.utilization().await;
             }
+
+            Ok(quotas)
         }
-    }
-
-    Ok(())
-}
-
-fn lift_pagerduty_routing_key() -> Option<String> {
-    std::env::var("PAGERDUTY_ROUTING_KEY").ok()
-}
-
-async fn notify(
-    notifier: impl notifiers::Notifier,
-    breached_quotas: &Vec<quota::Quota>,
-    ignored_quotas: &HashSet<String>,
-) {
-    for quota in breached_quotas {
-        if ignored_quotas.contains(&quota.quota_code().to_string()) {
-            info!(
-                "Ignoring quota {} as it is in the ignore list",
-                quota.quota_code()
-            );
-            continue;
-        }
-
-        let result = notifier.notify(quota).await;
-
-        if let Err(err) = result {
-            println!("pagerduty error: {}", err)
-        }
+        Err(err) => Err(Box::new(err)),
     }
 }
 
-fn log_startup(config: &config::Config) {
-    info!(
-        "Starting up: {} {}",
-        env!("CARGO_PKG_NAME"),
-        env!("CARGO_PKG_VERSION")
-    );
-    info!("Region: {}", config.regions().join(", "));
-    info!("Threshold: {}", config.threshold());
-    info!(
-        "Ignored quotas: {}",
-        config
-            .ignored_quotas()
-            .iter()
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-}
-
-async fn log_breached_quotas(quotas: &Vec<Quota>, config: &config::Config) {
-    let mut count = 0;
+async fn print_breached_quotas_table(quotas: &[Box<dyn Quota>], threshold: &u8) {
+    let mut table = Table::new();
+    table.add_row(row!["ARN", "Quota Name", "Utilization"]);
 
     for quota in quotas {
-        if quota.utilization() > Some(config.threshold())
-            && !config.ignored_quotas().contains(quota.quota_code())
-        {
-            info!(
-                "{:15}: {:30} {:12} {:30} : {:3}%",
-                quota.region(),
-                quota.service_code(),
-                quota.quota_code(),
-                quota.name(),
-                quota.utilization().unwrap()
-            );
-
-            count += 1;
+        if quota.utilization().await > Some(*threshold) {
+            table.add_row(Row::new(vec![
+                Cell::new(quota.arn().await),
+                Cell::new(quota.name().await),
+                Cell::new(&quota.utilization().await.unwrap().to_string()),
+            ]));
         }
     }
 
-    if count == 0 {
-        info!("No quotas breached");
-    }
+    table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
+    table.printstd();
+}
+
+async fn notify_breached_quotas(
+    quotas: &[Box<dyn Quota>],
+    threshold: &u8,
+    ignored_quotas: Option<&[String]>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // if we found a notifier, then use it to send notifications
+    if let Some(notifier) = notifiers::lookup_notifiers(threshold, ignored_quotas).await? {
+        notifier.notify(quotas).await?;
+    };
+
+    Ok(())
 }

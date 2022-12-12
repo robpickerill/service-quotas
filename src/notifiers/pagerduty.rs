@@ -5,8 +5,8 @@ use std::convert::From;
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-use crate::notifiers::Notifier;
-use crate::quota::Quota;
+use crate::notifiers::Notify;
+use crate::quotas::Quota;
 
 #[derive(Debug)]
 pub enum ClientError {
@@ -50,6 +50,7 @@ pub struct Client {
     client: reqwest::Client,
     routing_key: String,
     threshold: u8,
+    ignored_quotas: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -82,7 +83,11 @@ pub struct CustomDetails {
 }
 
 impl Client {
-    pub fn new(routing_key: &str, threshold: u8) -> Result<Client, ClientError> {
+    pub fn new(
+        routing_key: &str,
+        threshold: &u8,
+        ignored_quotas: Option<&[String]>,
+    ) -> Result<Client, ClientError> {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_str("application/json")?);
 
@@ -92,17 +97,18 @@ impl Client {
 
         Ok(Self {
             client,
-            threshold,
+            threshold: *threshold,
             routing_key: routing_key.to_string(),
+            ignored_quotas: ignored_quotas.map(|v| v.iter().map(|s| s.to_string()).collect()),
         })
     }
 
-    fn dedup_key(&self, quota: &Quota) -> String {
+    async fn dedup_key(&self, quota: &dyn Quota) -> String {
         format!(
             "{}-{}-{}",
-            quota.quota_code(),
-            quota.region(),
-            quota.account_id()
+            quota.quota_code().await,
+            quota.region().await,
+            quota.account_id().await,
         )
     }
 
@@ -113,70 +119,91 @@ impl Client {
 
         String::from("resolve")
     }
+
+    async fn ignored_quota(&self, quota: &dyn Quota) -> bool {
+        if let Some(ignored_quotas) = &self.ignored_quotas {
+            let quota_code = quota.quota_code().await;
+            ignored_quotas.contains(&quota_code.to_string())
+        } else {
+            false
+        }
+    }
 }
 
 #[async_trait]
-impl Notifier for Client {
-    type Error = ClientError;
-
+impl Notify for Client {
     #[allow(clippy::redundant_field_names)]
-    async fn notify(&self, quota: &Quota) -> Result<(), Self::Error> {
+    async fn notify(&self, quotas: &[Box<dyn Quota>]) -> Result<(), Box<dyn Error>> {
         let url = "https://events.pagerduty.com/v2/enqueue";
-        let trigger_action = self.trigger_action(quota.utilization());
-        let dedup_key = self.dedup_key(quota);
 
-        let Some(utilization) = quota.utilization() else {
-            return Ok(());
-        };
+        for quota in quotas {
+            if self.ignored_quota(&**quota).await {
+                continue;
+            }
 
-        let payload = NotifyBody {
-            routing_key: self.routing_key.clone(),
-            event_action: trigger_action,
-            dedup_key: dedup_key,
-            payload: Payload {
-                summary: format!(
-                    "Service Quota Utilization {}%: {} - {} in {} - {}",
-                    utilization,
-                    quota.quota_code(),
-                    quota.name(),
-                    quota.account_id(),
-                    quota.region(),
-                ),
-                source: "https://github.com/robpickerill/service-quotas".to_string(),
-                severity: "warning".to_string(),
-                custom_details: CustomDetails {
-                    arn: quota.arn().to_string(),
-                    account_id: quota.account_id().to_string(),
-                    service: quota.service_code().to_string(),
-                    region: quota.region().to_string(),
-                    quota_name: quota.name().to_string(),
-                    quota_code: quota.quota_code().to_string(),
-                    threshold: self.threshold,
-                    utilization_percentage: utilization,
-                    service_quota_url: service_quota_url(quota),
+            let trigger_action = self.trigger_action(quota.utilization().await);
+            let dedup_key = self.dedup_key(&**quota).await;
+
+            let Some(utilization) = quota.utilization().await else {
+                return Ok(());
+            };
+
+            let payload = NotifyBody {
+                routing_key: self.routing_key.clone(),
+                event_action: trigger_action,
+                dedup_key: dedup_key,
+                payload: Payload {
+                    summary: format!(
+                        "Service Quota Utilization {}%: {} - {} in {} - {}",
+                        utilization,
+                        quota.quota_code().await,
+                        quota.name().await,
+                        quota.account_id().await,
+                        quota.region().await,
+                    ),
+                    source: "https://github.com/robpickerill/service-quotas".to_string(),
+                    severity: "warning".to_string(),
+                    custom_details: CustomDetails {
+                        arn: quota.arn().await.to_string(),
+                        account_id: quota.account_id().await.to_string(),
+                        service: quota.service_code().await.to_string(),
+                        region: quota.region().await.to_string(),
+                        quota_name: quota.name().await.to_string(),
+                        quota_code: quota.quota_code().await.to_string(),
+                        threshold: self.threshold,
+                        utilization_percentage: utilization,
+                        service_quota_url: service_quota_url(&**quota).await,
+                    },
                 },
-            },
-        };
+            };
 
-        let result = self.client.post(url).json(&payload).send().await?;
-
-        match result.status().as_u16() {
-            202 => Ok(()),
-            _ => Err(ClientError::PagerdutyApiError(
-                result.status().as_u16(),
-                result.text().await?,
-            )),
+            let result = self.client.post(url).json(&payload).send().await;
+            match result {
+                Ok(r) => {
+                    if r.status().as_u16() != 202 {
+                        return Err(Box::new(ClientError::PagerdutyApiError(
+                            r.status().as_u16(),
+                            r.text().await?,
+                        )));
+                    }
+                }
+                Err(e) => {
+                    return Err(Box::new(ClientError::ReqwestError(e)));
+                }
+            }
         }
+
+        Ok(())
     }
 }
 
 // The url format for the a service quota in the AWS console
 // example: https://us-east-1.console.aws.amazon.com/servicequotas/home/services/ec2/quotas/L-85EED4F7
-fn service_quota_url(quota: &Quota) -> String {
+async fn service_quota_url(quota: &dyn Quota) -> String {
     format!(
         "https://{}.console.aws.amazon.com/servicequotas/home/services/{}/quotas/{}",
-        quota.region(),
-        quota.service_code(),
-        quota.quota_code()
+        quota.region().await,
+        quota.service_code().await,
+        quota.quota_code().await,
     )
 }

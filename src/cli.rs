@@ -14,6 +14,8 @@ fn common_args() -> Vec<Arg> {
         .short('r')
         .long("regions")
         .num_args(1..)
+        .default_value("us-east-1")
+        .value_parser(clap::builder::NonEmptyStringValueParser::new())
         .help("The AWS region(s) to check quotas for, defaults to us-east-1")]
 }
 
@@ -31,11 +33,14 @@ fn utilization() -> Command {
             Arg::new("threshold")
                 .short('t')
                 .long("threshold")
+                .default_value("75")
+                .value_parser(clap::value_parser!(u8).range(0..=100))
                 .help("The threshold to alert at for utlization of a service quota"),
             Arg::new("ignore")
                 .short('i')
                 .long("ignore")
                 .num_args(1..)
-                .help("The quota codes to ignore, defaults to none"),
+                .help("The service quotas to ignore")
+                .value_parser(clap::builder::NonEmptyStringValueParser::new()),
         ])
 }

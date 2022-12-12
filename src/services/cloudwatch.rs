@@ -17,7 +17,7 @@ use tokio_stream::StreamExt;
 #[derive(Debug)]
 pub enum CloudWatchError {
     MissingMetricData,
-    AwsSdkError(SdkError<GetMetricDataError>),
+    AwsCloudWatchSdkError(SdkError<GetMetricDataError>),
 }
 
 impl Error for CloudWatchError {}
@@ -25,14 +25,14 @@ impl Display for CloudWatchError {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
             Self::MissingMetricData => write!(f, "MissingMetricData"),
-            Self::AwsSdkError(e) => write!(f, "AwsSdkError: {}", e),
+            Self::AwsCloudWatchSdkError(e) => write!(f, "AwsCloudWatchSdkError: {}", e),
         }
     }
 }
 
 impl From<SdkError<GetMetricDataError>> for CloudWatchError {
     fn from(err: SdkError<GetMetricDataError>) -> Self {
-        Self::AwsSdkError(err)
+        Self::AwsCloudWatchSdkError(err)
     }
 }
 
