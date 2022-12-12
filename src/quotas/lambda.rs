@@ -20,17 +20,17 @@ struct Client {
 
 #[derive(Debug)]
 pub enum LambdaError {
-    AwsLambdaSdkError(SdkError<GetAccountSettingsError>),
     // issues with parsing ARNs
     ArnFormatError(String),
+    AwsLambdaSdkError(SdkError<GetAccountSettingsError>),
 }
 
 impl Error for LambdaError {}
 impl Display for LambdaError {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
-            Self::AwsLambdaSdkError(e) => write!(f, "AwsLambdaSdkError: {}", e),
             Self::ArnFormatError(e) => write!(f, "ArnFormatError: {}", e),
+            Self::AwsLambdaSdkError(e) => write!(f, "AwsLambdaSdkError: {}", e),
         }
     }
 }
@@ -98,6 +98,10 @@ impl QuotaL2ACBD22F {
             region: parsed_arn.region,
         })
     }
+
+    fn calculate_utilization(&self, used: i64, limit: i64) -> u8 {
+        (used as f64 / limit as f64 * 100.0) as u8
+    }
 }
 
 #[async_trait]
@@ -136,16 +140,34 @@ impl Quota for QuotaL2ACBD22F {
         if let (Some(account_usage), Some(account_limit)) =
             (response.account_usage(), response.account_limit())
         {
-            let used = account_usage.total_code_size();
-            let limit = account_limit.total_code_size();
+            let utilization = self.calculate_utilization(
+                account_usage.total_code_size(),
+                account_limit.total_code_size(),
+            );
 
-            let utilization = (used / limit * 100) as u8;
-
-            *self.utilization.write().await = Some(utilization);
-
-            return Some(utilization);
+            *self.utilization.write().await = Some(utilization as u8);
+            return Some(utilization as u8);
         }
 
         None
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_calculate_utilization() {
+        let quota = QuotaL2ACBD22F::new(
+            "arn:aws:servicequotas:us-east-1:123456789012:service/lambda/test_quota",
+            "test_quota",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(quota.calculate_utilization(100, 100), 100);
+        assert_eq!(quota.calculate_utilization(310010479737, 483183820800), 64);
+        assert_eq!(quota.calculate_utilization(0, 0), 0);
     }
 }
