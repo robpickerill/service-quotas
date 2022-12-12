@@ -20,19 +20,48 @@ pub async fn list_quotas(args: &ArgMatches) -> Result<(), Box<dyn std::error::Er
     let regions = args.get_many::<String>("regions").unwrap();
 
     // TODO: Move this complexity into the servicequota module
-    let mut all_quotas = Vec::new();
+    let mut handlers = Vec::new();
     for region in regions {
+        println!("checking for quotas in region {}", region);
+
         let client = servicequota::Client::new(region).await;
         let service_codes = client.service_codes().await?;
 
+        let permits = new_permits().await;
+
         for service_code in service_codes {
-            all_quotas.extend(client.quotas(&service_code).await?);
+            let client_ = client.clone();
+            let permits = Arc::clone(&permits);
+
+            handlers.push(tokio::spawn(async move {
+                let _permits = permits.acquire().await.unwrap();
+                client_.quotas(&service_code).await
+            }));
         }
+    }
+
+    let mut all_quotas = Vec::new();
+    for handler in handlers {
+        match handler.await {
+            Ok(result) => match result {
+                Ok(quotas) => all_quotas.extend(quotas),
+                Err(err) => println!("error: {}", err),
+            },
+            Err(err) => println!("error: {}", err),
+        };
     }
 
     print_list_quotas_table(all_quotas).await;
 
     Ok(())
+}
+
+// new_permits returns a new semaphore.
+// 3 concurrent requests to the AWS APIs feels like a good number to avoid getting
+// rate limited.
+// TODO: Make this configurable
+async fn new_permits() -> Arc<Semaphore> {
+    Arc::new(Semaphore::new(3))
 }
 
 async fn print_list_quotas_table(quotas: Vec<Box<dyn Quota>>) {
@@ -46,7 +75,7 @@ async fn print_list_quotas_table(quotas: Vec<Box<dyn Quota>>) {
         ]));
     }
 
-    table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
+    table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
     table.printstd();
 }
 
@@ -67,7 +96,7 @@ pub async fn utilization(args: &ArgMatches) -> Result<(), Box<dyn std::error::Er
         let client = servicequota::Client::new(region).await;
         let service_codes = client.service_codes().await?;
 
-        let permits = Arc::new(Semaphore::new(4));
+        let permits = new_permits().await;
 
         for service_code in service_codes {
             let permits = Arc::clone(&permits);
@@ -131,7 +160,7 @@ async fn print_breached_quotas_table(quotas: &[Box<dyn Quota>], threshold: &u8) 
         }
     }
 
-    table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
+    table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
     table.printstd();
 }
 
