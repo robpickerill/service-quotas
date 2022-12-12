@@ -1,6 +1,6 @@
 use crate::{
-    quota,
-    quota::{Quota, QuotaError},
+    quotas,
+    quotas::{Quota, QuotaError},
     util,
 };
 use async_trait::async_trait;
@@ -20,7 +20,7 @@ struct Client {
 
 #[derive(Debug)]
 pub enum LambdaError {
-    AwsSdkError(SdkError<GetAccountSettingsError>),
+    AwsLambdaSdkError(SdkError<GetAccountSettingsError>),
     // issues with parsing ARNs
     ArnFormatError(String),
 }
@@ -29,7 +29,7 @@ impl Error for LambdaError {}
 impl Display for LambdaError {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
-            Self::AwsSdkError(e) => write!(f, "AwsSdkError: {}", e),
+            Self::AwsLambdaSdkError(e) => write!(f, "AwsLambdaSdkError: {}", e),
             Self::ArnFormatError(e) => write!(f, "ArnFormatError: {}", e),
         }
     }
@@ -37,7 +37,7 @@ impl Display for LambdaError {
 
 impl From<SdkError<GetAccountSettingsError>> for LambdaError {
     fn from(err: SdkError<GetAccountSettingsError>) -> Self {
-        Self::AwsSdkError(err)
+        Self::AwsLambdaSdkError(err)
     }
 }
 
@@ -84,7 +84,7 @@ pub struct QuotaL2ACBD22F {
 #[allow(clippy::redundant_field_names)]
 impl QuotaL2ACBD22F {
     pub async fn new(arn: &str, name: &str) -> Result<Self, LambdaError> {
-        let parsed_arn = quota::parse_arn(arn)?;
+        let parsed_arn = quotas::parse_arn(arn)?;
         let client = Client::new(&parsed_arn.region).await;
 
         Ok(Self {

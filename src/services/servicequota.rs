@@ -1,7 +1,8 @@
-use crate::quota::lambda::QuotaL2ACBD22F;
-use crate::quota::{CloudWatchQuotaDetails, QuotaCloudWatch};
+use crate::quotas::{
+    lambda::QuotaL2ACBD22F, CloudWatchQuotaDetails, Quota, QuotaCloudWatch, QuotaError,
+};
+use crate::services::cloudwatch;
 use crate::util;
-use crate::{quota::Quota, quota::QuotaError, services::cloudwatch};
 
 use aws_sdk_cloudwatch::types::SdkError;
 use aws_sdk_servicequotas::error::{ListServiceQuotasError, ListServicesError};
@@ -12,8 +13,8 @@ use tokio_stream::StreamExt;
 #[derive(Debug)]
 pub enum ServiceQuotaError {
     QuotaError(QuotaError),
-    AwsSdkErrorListServiceQuotas(SdkError<ListServiceQuotasError>),
-    AwsSdkErrorListServices(SdkError<ListServicesError>),
+    AwsServiceQuotasSdkErrorListServiceQuotas(SdkError<ListServiceQuotasError>),
+    AwsServiceQuotasSdkErrorListServices(SdkError<ListServicesError>),
 }
 
 impl Error for ServiceQuotaError {}
@@ -21,8 +22,12 @@ impl Display for ServiceQuotaError {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
             Self::QuotaError(e) => write!(f, "QuotaError: {}", e),
-            Self::AwsSdkErrorListServiceQuotas(e) => write!(f, "AwsSdkError: {}", e),
-            Self::AwsSdkErrorListServices(e) => write!(f, "AwsSdkError: {}", e),
+            Self::AwsServiceQuotasSdkErrorListServiceQuotas(e) => {
+                write!(f, "AwsServiceQuotasSdkErrorListServiceQuotas: {}", e)
+            }
+            Self::AwsServiceQuotasSdkErrorListServices(e) => {
+                write!(f, "AwsServiceQuotasSdkErrorListServices: {}", e)
+            }
         }
     }
 }
@@ -34,12 +39,12 @@ impl From<QuotaError> for ServiceQuotaError {
 }
 impl From<SdkError<ListServiceQuotasError>> for ServiceQuotaError {
     fn from(err: SdkError<ListServiceQuotasError>) -> Self {
-        Self::AwsSdkErrorListServiceQuotas(err)
+        Self::AwsServiceQuotasSdkErrorListServiceQuotas(err)
     }
 }
 impl From<SdkError<ListServicesError>> for ServiceQuotaError {
     fn from(err: SdkError<ListServicesError>) -> Self {
-        Self::AwsSdkErrorListServices(err)
+        Self::AwsServiceQuotasSdkErrorListServices(err)
     }
 }
 
