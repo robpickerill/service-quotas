@@ -66,7 +66,7 @@ An example IAM policy is provided as:
             "Resource": "*"
         },
         {
-            "Sid": "AllowSeviceQuotas",
+            "Sid": "AllowServiceQuotas",
             "Action": [
                 "servicequotas:ListServices",
                 "servicequotas:ListServiceQuotas"
