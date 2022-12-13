@@ -14,6 +14,7 @@ use std::{
 };
 use tokio::sync::RwLock;
 
+#[derive(Debug, Clone)]
 struct Client {
     client: aws_sdk_lambda::Client,
 }
@@ -70,6 +71,7 @@ impl Client {
 }
 
 // The amount of storage that's available for deployment packages and layer archives in the current Region.
+#[derive(Debug, Clone)]
 pub struct QuotaL2ACBD22F {
     client: Client,
     utilization: Arc<RwLock<Option<u8>>>,
@@ -147,5 +149,9 @@ impl Quota for QuotaL2ACBD22F {
         }
 
         None
+    }
+
+    fn clone_dyn(&self) -> Box<dyn Quota> {
+        Box::new(self.clone())
     }
 }

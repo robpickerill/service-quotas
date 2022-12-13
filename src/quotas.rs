@@ -65,6 +65,13 @@ pub trait Quota: Send + Sync {
     async fn service_code(&self) -> &str;
     async fn region(&self) -> &str;
     async fn utilization(&self) -> Option<u8>;
+    fn clone_dyn(&self) -> Box<dyn Quota>;
+}
+
+impl Clone for Box<dyn Quota> {
+    fn clone(&self) -> Self {
+        self.clone_dyn()
+    }
 }
 
 #[async_trait]
@@ -113,6 +120,10 @@ impl Quota for QuotaCloudWatch {
         } else {
             None
         }
+    }
+
+    fn clone_dyn(&self) -> Box<dyn Quota> {
+        Box::new(self.clone())
     }
 }
 

@@ -13,7 +13,7 @@ use notifiers::Notify;
 use prettytable::{format, Cell, Row, Table};
 use quotas::Quota;
 use services::servicequota;
-use std::{error::Error, sync::Arc};
+use std::{error::Error, ops::Deref, sync::Arc};
 use tokio::sync::Semaphore;
 
 pub async fn list_quotas(args: &ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
@@ -101,26 +101,31 @@ pub async fn utilization(args: &ArgMatches) -> Result<(), Box<dyn std::error::Er
         for service_code in service_codes {
             let permits = Arc::clone(&permits);
             let client_ = client.clone();
+            let threshold_ = *threshold;
 
             let handler = tokio::spawn(async move {
-                utilization_per_service(&client_, &service_code, permits).await
+                utilization_per_service(&client_, &service_code, &threshold_, permits).await
             });
             handlers.push(handler)
         }
     }
 
     let mut all_quotas = Vec::new();
+    let mut breached_quotas = Vec::new();
     for handler in handlers {
         let result = handler.await?;
 
         match result {
-            Ok(quotas) => all_quotas.extend(quotas),
+            Ok(quotas) => {
+                all_quotas.extend(quotas.0);
+                breached_quotas.extend(quotas.1);
+            }
             Err(err) => println!("error: {}", err),
         }
     }
 
-    print_breached_quotas_table(&all_quotas, threshold).await;
-    notify_breached_quotas(&all_quotas, threshold, ignored_quotas.as_deref()).await?;
+    print_breached_quotas_table(&breached_quotas).await;
+    notify_breached_quotas(&breached_quotas, threshold, ignored_quotas.as_deref()).await?;
 
     Ok(())
 }
@@ -128,36 +133,36 @@ pub async fn utilization(args: &ArgMatches) -> Result<(), Box<dyn std::error::Er
 async fn utilization_per_service(
     client: &servicequota::Client,
     service_code: &str,
+    threshold: &u8,
     permits: Arc<Semaphore>,
-) -> Result<Vec<Box<dyn Quota>>, Box<dyn Error + Sync + Send>> {
+) -> Result<(Vec<Box<dyn Quota>>, Vec<Box<dyn Quota>>), Box<dyn Error + Sync + Send>> {
     let _permits = permits.acquire().await.unwrap();
     let quotas = client.quotas(service_code).await;
 
     match quotas {
         Ok(quotas) => {
-            // TODO: This is a hack to get utilization in parallel
+            let mut breached_quotas = Vec::new();
             for quota in &quotas {
-                quota.utilization().await;
+                if quota.utilization().await > Some(*threshold) {
+                    breached_quotas.push(quota.clone());
+                }
             }
-
-            Ok(quotas)
+            Ok((quotas, breached_quotas))
         }
         Err(err) => Err(Box::new(err)),
     }
 }
 
-async fn print_breached_quotas_table(quotas: &[Box<dyn Quota>], threshold: &u8) {
+async fn print_breached_quotas_table(quotas: &[Box<dyn Quota>]) {
     let mut table = Table::new();
     table.add_row(row!["ARN", "Quota Name", "Utilization"]);
 
     for quota in quotas {
-        if quota.utilization().await > Some(*threshold) {
-            table.add_row(Row::new(vec![
-                Cell::new(quota.arn().await),
-                Cell::new(quota.name().await),
-                Cell::new(&quota.utilization().await.unwrap().to_string()),
-            ]));
-        }
+        table.add_row(Row::new(vec![
+            Cell::new(quota.arn().await),
+            Cell::new(quota.name().await),
+            Cell::new(&quota.utilization().await.unwrap().to_string()),
+        ]));
     }
 
     table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
