@@ -69,7 +69,7 @@ impl Client {
         let dimensions = hashmap_to_dimensions(&query_input.dimensions);
 
         let metric = Metric::builder()
-            .set_dimensions(Some(dimensions))
+            .set_dimensions(dimensions)
             .metric_name(&query_input.metric_name)
             .namespace(&query_input.namespace)
             .build();
@@ -151,9 +151,61 @@ fn get_max_value(metric_data_results: &[MetricDataResult]) -> Option<u8> {
     max
 }
 
-fn hashmap_to_dimensions(hashmap: &HashMap<String, String>) -> Vec<Dimension> {
-    hashmap
-        .iter()
-        .map(|(k, v)| Dimension::builder().name(k).value(v).build())
-        .collect::<Vec<_>>()
+fn hashmap_to_dimensions(hashmap: &HashMap<String, String>) -> Option<Vec<Dimension>> {
+    if hashmap.is_empty() {
+        return None;
+    }
+
+    Some(
+        hashmap
+            .iter()
+            .map(|(k, v)| Dimension::builder().name(k).value(v).build())
+            .collect::<Vec<_>>(),
+    )
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_hashmap_to_dimension_none() {
+        let hashmap = HashMap::new();
+        let dimensions = hashmap_to_dimensions(&hashmap);
+
+        assert_eq!(dimensions, None);
+    }
+
+    #[test]
+    fn test_hashmap_to_dimension_single() {
+        let mut hashmap = HashMap::new();
+        hashmap.insert("key".to_string(), "value".to_string());
+
+        let dimensions = hashmap_to_dimensions(&hashmap);
+
+        assert_eq!(
+            dimensions,
+            Some(vec![Dimension::builder()
+                .name("key")
+                .value("value")
+                .build()])
+        );
+    }
+
+    #[test]
+    fn test_hashmap_to_dimension_multiple() {
+        let mut hashmap = HashMap::new();
+        hashmap.insert("key".to_string(), "value".to_string());
+        hashmap.insert("key2".to_string(), "value2".to_string());
+
+        let dimensions = hashmap_to_dimensions(&hashmap);
+
+        assert_eq!(
+            dimensions,
+            Some(vec![
+                Dimension::builder().name("key").value("value").build(),
+                Dimension::builder().name("key2").value("value2").build()
+            ])
+        );
+    }
 }
