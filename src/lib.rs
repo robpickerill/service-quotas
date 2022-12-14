@@ -13,7 +13,7 @@ use notifiers::Notify;
 use prettytable::{format, Cell, Row, Table};
 use quotas::Quota;
 use services::servicequota;
-use std::{error::Error, ops::Deref, sync::Arc};
+use std::{error::Error, sync::Arc};
 use tokio::sync::Semaphore;
 
 pub async fn list_quotas(args: &ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
