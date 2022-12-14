@@ -7,6 +7,8 @@
   - [IAM Permissions](#iam-permissions)
 
 
+Note: this uses the developer release of the [AWS Rust SDK](https://github.com/awslabs/aws-sdk-rust).
+
 A CLI to calculate utilization of AWS service quotas, using [CloudWatch service quota usage metrics](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Service-Quota-Integration.html). 
 
 Discovery of service quotas via the [list-services](https://docs.aws.amazon.com/servicequotas/2019-06-24/apireference/API_ListServices.html) and [list-service-quotas](https://docs.aws.amazon.com/servicequotas/2019-06-24/apireference/API_ListServiceQuotas.html) API. If the service quota supports cloudwatch metrics and the `SERVICE_QUOTA()` metric maths function then it will query for the utilization percentage of the service quota. This provides the programmatic glue between the AWS Service Quota list-service-quota API `UsageMetric` and the Cloudwatch metric maths query to obtain the utilization of the service quota.
