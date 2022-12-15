@@ -198,14 +198,12 @@ mod test {
         hashmap.insert("key".to_string(), "value".to_string());
         hashmap.insert("key2".to_string(), "value2".to_string());
 
-        let dimensions = hashmap_to_dimensions(&hashmap);
+        let dimensions = hashmap_to_dimensions(&hashmap).unwrap();
+        let expected = vec![
+            Dimension::builder().name("key").value("value").build(),
+            Dimension::builder().name("key2").value("value2").build(),
+        ];
 
-        assert_eq!(
-            dimensions,
-            Some(vec![
-                Dimension::builder().name("key").value("value").build(),
-                Dimension::builder().name("key2").value("value2").build()
-            ])
-        );
+        assert!(dimensions == expected)
     }
 }
